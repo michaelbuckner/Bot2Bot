@@ -3,10 +3,11 @@ from typing import Dict
 import requests
 from dotenv import load_dotenv
 from openai import OpenAI
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
 import time
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +16,7 @@ import hashlib
 import json
 import logging
 import uuid
+from typing import Optional
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -40,9 +42,68 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add these new classes for login
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class User(BaseModel):
+    username: str
+
+# Add session management
+sessions = {}
+
+def get_current_user(request: Request) -> Optional[User]:
+    session_id = request.cookies.get("session_id")
+    if session_id and session_id in sessions:
+        return sessions[session_id]
+    return None
+
+# Update the root route to check for authentication
 @app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
+async def read_root(request: Request, user: Optional[User] = Depends(get_current_user)):
+    if not user:
+        return RedirectResponse(url="/login")
     return templates.TemplateResponse("index.html", {"request": request})
+
+# Add login page route
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request, user: Optional[User] = Depends(get_current_user)):
+    if user:
+        return RedirectResponse(url="/")
+    return templates.TemplateResponse("login.html", {"request": request})
+
+# Add login endpoint
+@app.post("/login")
+async def login(login_request: LoginRequest):
+    try:
+        with open("users.json", "r") as f:
+            users = json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Error reading users database")
+
+    if (login_request.username in users and 
+        users[login_request.username]["password"] == login_request.password):
+        
+        session_id = str(uuid.uuid4())
+        sessions[session_id] = User(username=login_request.username)
+        
+        response = Response(content=json.dumps({"message": "Login successful"}),
+                          media_type="application/json")
+        response.set_cookie(key="session_id", 
+                          value=session_id,
+                          httponly=True,
+                          max_age=3600)  # 1 hour
+        return response
+    
+    raise HTTPException(status_code=401, detail="Invalid username or password")
+
+# Add logout endpoint
+@app.post("/logout")
+async def logout(response: Response):
+    response = RedirectResponse(url="/login")
+    response.delete_cookie(key="session_id")
+    return response
 
 class ChatMessage(BaseModel):
     message: str
@@ -60,7 +121,7 @@ class ServiceNowAPI:
     def generate_signature(self, payload):
         try:
             parsed_payload = json.loads(payload)
-            message = json.dumps(parsed_payload, separators=(',', ':'))  # remove whitespace
+            message = json.dumps(parsed_payload, separators=(',', ':'))
             hash_value = hmac.new(
                 self.token.encode('utf-8'),
                 message.encode('utf-8'),
@@ -96,7 +157,6 @@ class ServiceNowAPI:
             }
 
             logger.info("Sending request to ServiceNow with payload: %s", payload)
-
             response = requests.post(
                 f"https://{self.instance_url}/api/sn_va_as_service/bot/integration",
                 headers=headers,
@@ -109,21 +169,39 @@ class ServiceNowAPI:
 
             response.raise_for_status()
             response_data = response.json()
-            
-            # Log detailed response information
-            logger.info("ServiceNow Response Type: %s", type(response_data))
-            logger.info("ServiceNow Response Keys: %s", list(response_data.keys()) if isinstance(response_data, dict) else "Not a dict")
-            
-            if isinstance(response_data, dict) and "body" in response_data:
-                logger.info("ServiceNow Body Type: %s", type(response_data["body"]))
-                if isinstance(response_data["body"], list):
-                    for idx, item in enumerate(response_data["body"]):
-                        logger.info("Body Item %d: %s", idx, item)
 
-            # Normalize response
+            # If the top-level is a list, capture the conversationId and remove StartConversation items
+            conversation_id = None
+            if isinstance(response_data, list):
+                filtered_response = []
+                for item in response_data:
+                    if item.get("uiType") == "OutputText":
+                        try:
+                            parsed_value = json.loads(item.get("value", "{}"))
+                            if (parsed_value.get("uiType") == "ActionMsg"
+                                and parsed_value.get("actionType") == "StartConversation"):
+                                conversation_id = parsed_value.get("conversationId")
+                                continue  # skip adding this item to filtered_response
+                        except (ValueError, TypeError, json.JSONDecodeError):
+                            pass
+                    filtered_response.append(item)
+
+                # Store filtered items under "body"
+                # and keep the conversationId for reference in the final output
+                response_data = {
+                    "conversationId": conversation_id,
+                    "body": filtered_response
+                }
+
+            # Log details
+            logger.info("Captured conversationId: %s", conversation_id)
+            logger.info("ServiceNow Response Type: %s", type(response_data))
+
+            # Ensure response_data is a dict with "body" as a list
             if not isinstance(response_data, dict):
                 logger.warning("Response is not a dictionary, wrapping it")
                 response_data = {
+                    "conversationId": conversation_id,
                     "body": [{
                         "uiType": "OutputText",
                         "value": str(response_data)
@@ -131,12 +209,10 @@ class ServiceNowAPI:
                 }
             elif "body" not in response_data:
                 logger.warning("Response missing 'body' field, adding it")
-                response_data = {
-                    "body": [{
-                        "uiType": "OutputText",
-                        "value": json.dumps(response_data)
-                    }]
-                }
+                response_data["body"] = [{
+                    "uiType": "OutputText",
+                    "value": json.dumps(response_data)
+                }]
             elif not isinstance(response_data["body"], list):
                 logger.warning("Body is not a list, converting it")
                 response_data["body"] = [{
@@ -145,22 +221,33 @@ class ServiceNowAPI:
                 }]
 
             # Validate each item in the body
-            if isinstance(response_data.get("body"), list):
-                validated_body = []
-                for item in response_data["body"]:
-                    if not isinstance(item, dict):
-                        validated_body.append({
-                            "uiType": "OutputText",
-                            "value": str(item)
-                        })
-                    elif "uiType" not in item or "value" not in item:
-                        validated_body.append({
-                            "uiType": "OutputText",
-                            "value": json.dumps(item)
-                        })
-                    else:
-                        validated_body.append(item)
-                response_data["body"] = validated_body
+            validated_body = []
+            for item in response_data.get("body", []):
+                if isinstance(item, dict) and "value" in item:
+                    try:
+                        parsed_value = json.loads(item["value"])
+                        # Skip if it's another StartConversation
+                        if (parsed_value.get("uiType") == "ActionMsg"
+                            and parsed_value.get("actionType") == "StartConversation"):
+                            continue
+                    except (ValueError, TypeError):
+                        pass
+
+                # Basic validation
+                if not isinstance(item, dict):
+                    validated_body.append({
+                        "uiType": "OutputText",
+                        "value": str(item)
+                    })
+                elif "uiType" not in item or "value" not in item:
+                    validated_body.append({
+                        "uiType": "OutputText",
+                        "value": json.dumps(item)
+                    })
+                else:
+                    validated_body.append(item)
+
+            response_data["body"] = validated_body
 
             logger.info("Final normalized response: %s", json.dumps(response_data))
             return response_data
@@ -170,6 +257,7 @@ class ServiceNowAPI:
             if hasattr(e.response, 'text'):
                 logger.error("Error response content: %s", e.response.text)
             return {
+                "conversationId": None,
                 "body": [{
                     "uiType": "OutputText",
                     "value": f"Error communicating with ServiceNow: {str(e)}"
@@ -178,6 +266,7 @@ class ServiceNowAPI:
         except json.JSONDecodeError as e:
             logger.error("JSON decode error: %s", str(e))
             return {
+                "conversationId": None,
                 "body": [{
                     "uiType": "OutputText",
                     "value": f"Invalid JSON response from ServiceNow: {str(e)}"
@@ -186,6 +275,7 @@ class ServiceNowAPI:
         except Exception as e:
             logger.error("Unexpected error: %s", str(e))
             return {
+                "conversationId": None,
                 "body": [{
                     "uiType": "OutputText",
                     "value": f"Unexpected error: {str(e)}"
@@ -214,8 +304,10 @@ def get_gpt_response(message: str) -> str:
         raise HTTPException(status_code=500, detail=f"GPT API error: {str(e)}")
 
 @app.post("/chat")
-async def chat(chat_message: ChatMessage):
+async def chat(chat_message: ChatMessage, user: Optional[User] = Depends(get_current_user)):
     """Handle chat messages"""
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         if chat_message.use_servicenow:
             try:
@@ -244,7 +336,6 @@ async def chat(chat_message: ChatMessage):
     except Exception as e:
         logger.error("Error in chat endpoint: %s", str(e))
         raise HTTPException(status_code=500, detail=str(e))
-
 
 if __name__ == "__main__":
     import uvicorn

@@ -212,31 +212,25 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function addMessage(response, className) {
-        console.log(response);
-      
-        // Grab the array from servicenow_response.body
-        const bodyItems = response?.servicenow_response?.body ?? [];
-        const collectedText = [];
-      
-        // Collect displayable text from body items
-        bodyItems.forEach(item => {
-          if (item.uiType === 'OutputText' && item.value) {
+        console.log('Adding message:', { response, className });
+        
+        // Skip StartConversation action messages
+        if (typeof response === 'string') {
             try {
-              // If it's JSON but an action message, skip displaying
-              const parsed = JSON.parse(item.value);
-              if (parsed.uiType !== 'ActionMsg') {
-                collectedText.push(item.value);
-              }
+                const parsed = JSON.parse(response);
+                if (parsed.uiType === 'ActionMsg' && parsed.actionType === 'StartConversation') {
+                    console.log('Skipping StartConversation message');
+                    return;
+                }
             } catch (e) {
-              // Not JSON, treat as plain text
-              collectedText.push(item.value);
+                // Not JSON, continue with normal message handling
             }
-          }
-        });
+        }
       
         // Create the message container
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${className}`;
+        console.log('Created message div with class:', messageDiv.className);
       
         // If it's a bot message, add an icon
         if (className === 'bot-message') {
@@ -245,31 +239,68 @@ document.addEventListener('DOMContentLoaded', function() {
           iconDiv.className = 'message-icon';
           iconDiv.innerHTML = apiToggle.checked
             ? `<img src="/static/servicenow-icon.png" width="24" height="24" alt="ServiceNow">`
-            : `<svg ...>...</svg>`;
+            : `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>`;
           messageDiv.appendChild(iconDiv);
         }
       
-        // Build paragraphs from collected text
+        // Create the message content
         const messageContent = document.createElement('div');
         messageContent.className = 'message-content';
-        const paragraphs = collectedText.join('\n\n').split('\n\n').filter(Boolean);
-      
-        paragraphs.forEach((p, idx) => {
-          const paragraph = document.createElement('p');
-          paragraph.textContent = p;
-          if (idx < paragraphs.length - 1) paragraph.style.marginBottom = '0.5rem';
-          messageContent.appendChild(paragraph);
-        });
+        
+        // Handle the response based on its type
+        if (typeof response === 'string') {
+            const paragraph = document.createElement('p');
+            paragraph.textContent = response;
+            messageContent.appendChild(paragraph);
+        } else if (response?.servicenow_response?.body) {
+            // Handle ServiceNow response structure
+            const bodyItems = response.servicenow_response.body;
+            console.log('Processing ServiceNow body items:', bodyItems);
+            
+            bodyItems.forEach(item => {
+                if (item.uiType === 'OutputText' && item.value) {
+                    const paragraph = document.createElement('p');
+                    paragraph.textContent = item.value;
+                    messageContent.appendChild(paragraph);
+                }
+            });
+        }
       
         messageDiv.appendChild(messageContent);
-        chatMessages.appendChild(messageDiv);
+        console.log('Appending message to chat container:', messageDiv);
+        
+        const chatMessages = document.getElementById('chatMessages');
+        if (chatMessages) {
+            chatMessages.appendChild(messageDiv);
+            console.log('Message appended successfully');
+        } else {
+            console.error('Chat messages container not found!');
+        }
+        
         scrollToBottom();
-      }
-      
+    }
 
     function scrollToBottom() {
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
+
+    // Add logout functionality
+    document.getElementById('logoutButton').addEventListener('click', async () => {
+        try {
+            const response = await fetch('/logout', {
+                method: 'POST',
+            });
+            if (response.ok) {
+                window.location.href = '/login';
+            }
+        } catch (error) {
+            console.error('Logout failed:', error);
+        }
+    });
 
     // Add click handlers for conversation starters
     document.querySelectorAll('.starter-button').forEach(button => {

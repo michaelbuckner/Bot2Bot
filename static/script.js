@@ -102,7 +102,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             // IMPORTANT: Make sure this URL is correct for your FastAPI server/port
-            const response = await fetch('http://localhost/chat', {
+            const response = await fetch('https://bot2bot.sliplane.app/chat', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

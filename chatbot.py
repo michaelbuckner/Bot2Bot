@@ -352,23 +352,36 @@ async def chat(chat_message: ChatMessage, user: Optional[User] = Depends(get_cur
         
     try:
         if chat_message.use_servicenow:
-            response = servicenow_api.send_message_to_va(
-                chat_message.message, 
-                chat_message.session_id
-            )
-            
-            # Generate a request ID if none is provided
-            request_id = response.get("conversationId") or str(uuid.uuid4())
-            
-            # Store the response body in pending_responses
-            pending_responses[request_id] = response.get("body", [])
-            
-            # Return immediately with a pending status
-            return AsyncResponse(
-                request_id=request_id,
-                status="pending",
-                message="Request is being processed"
-            )
+            try:
+                logger.info("Sending message to ServiceNow: %s", chat_message.message)
+                response = servicenow_api.send_message_to_va(
+                    chat_message.message, 
+                    chat_message.session_id
+                )
+                
+                logger.info("Raw ServiceNow response: %s", json.dumps(response, indent=2))
+                
+                # Generate a request ID if none is provided
+                request_id = response.get("conversationId") or str(uuid.uuid4())
+                logger.info("Using request_id: %s", request_id)
+                
+                # Store the response body in pending_responses
+                response_body = response.get("body", [])
+                logger.info("Storing response body: %s", json.dumps(response_body, indent=2))
+                pending_responses[request_id] = response_body
+                
+                # Return immediately with a pending status
+                return AsyncResponse(
+                    request_id=request_id,
+                    status="pending",
+                    message="Request is being processed"
+                )
+            except Exception as e:
+                logger.error("ServiceNow Error: %s", str(e), exc_info=True)
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Error communicating with ServiceNow: {str(e)}"
+                )
         else:
             try:
                 gpt_response = get_gpt_response(chat_message.message)

@@ -306,8 +306,6 @@ async def servicenow_callback(
     except json.JSONDecodeError as e:
         logger.error("Failed to parse callback JSON: %s", str(e))
         raise HTTPException(status_code=400, detail="Invalid JSON")
-        
-    logger.info("Parsed callback data: %s", json.dumps(body, indent=2))
 
     try:
         callback = ServiceNowCallback(**body)
@@ -319,47 +317,42 @@ async def servicenow_callback(
             return {"status": "error", "message": "No requestId in callback"}
 
         logger.info("Processing callback for requestId: %s", request_id)
-        logger.info("Current pending_responses: %s", json.dumps(pending_responses, indent=2))
-
+        
         # Process the callback body
         if callback.body:
             if isinstance(callback.body, list):
                 # Filter out spinner/action messages
                 content_messages = []
                 for msg in callback.body:
-                    if isinstance(msg, dict):
-                        logger.debug("Processing message: %s", json.dumps(msg, indent=2))
-                        if msg.get('uiType') == 'OutputText':
-                            try:
-                                # Try to parse the value as JSON
-                                value = msg.get('value', '{}')
-                                logger.debug("Attempting to parse value: %s", value)
-                                parsed = json.loads(value)
-                                if parsed.get('uiType') == 'ActionMsg' and parsed.get('actionType') == 'StartConversation':
-                                    logger.debug("Skipping StartConversation message")
-                                    continue
-                            except (json.JSONDecodeError, AttributeError) as e:
-                                logger.debug("Failed to parse value as JSON: %s", str(e))
+                    if not isinstance(msg, dict):
+                        continue
+                        
+                    # Skip all ActionMsg types (spinners, etc)
+                    if msg.get('uiType') == 'ActionMsg':
+                        continue
+                        
+                    # Keep OutputCard and Picker messages
+                    if msg.get('uiType') in ['OutputCard', 'Picker']:
                         content_messages.append(msg)
 
                 if content_messages:
-                    logger.info("Storing %d messages for request %s: %s", 
-                              len(content_messages), request_id, 
-                              json.dumps(content_messages, indent=2))
+                    logger.info("Storing %d content messages for request %s", 
+                              len(content_messages), request_id)
                     
-                    # Append new messages to existing ones
+                    # Store only content messages
                     if request_id in pending_responses:
-                        pending_responses[request_id].extend(content_messages)
-                        logger.info("Updated pending_responses for %s: %s", 
-                                  request_id, 
-                                  json.dumps(pending_responses[request_id], indent=2))
+                        # Get existing non-spinner messages
+                        existing_messages = [
+                            msg for msg in pending_responses[request_id]
+                            if isinstance(msg, dict) and msg.get('uiType') != 'ActionMsg'
+                        ]
+                        # Add new content messages
+                        pending_responses[request_id] = existing_messages + content_messages
                     else:
                         pending_responses[request_id] = content_messages
-                        logger.info("Created new pending_responses for %s: %s", 
-                                  request_id, 
-                                  json.dumps(content_messages, indent=2))
-                else:
-                    logger.debug("No content messages in callback for request %s", request_id)
+                        
+                    logger.info("Updated messages for request %s: %s", 
+                              request_id, json.dumps(pending_responses[request_id], indent=2))
             else:
                 # If body is not a list, wrap it in a list
                 logger.warning("Callback body is not a list, wrapping it: %s", callback.body)
@@ -393,8 +386,7 @@ async def get_servicenow_responses(
     del pending_responses[request_id]
     
     logger.info("Returning responses for request %s: %s", 
-               request_id, 
-               json.dumps(responses, indent=2))
+               request_id, json.dumps(responses, indent=2))
     
     return {
         "servicenow_response": {

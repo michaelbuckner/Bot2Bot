@@ -208,11 +208,25 @@ document.addEventListener('DOMContentLoaded', function() {
                                             if (isDebug) {
                                                 addDebugMessage('Card data:', cardData);
                                             }
-                                            cardData.fields.forEach(field => {
-                                                if (field.fieldLabel === 'Top Result:') {
-                                                    addMessage(field.fieldValue, 'bot-message');
+                                            
+                                            // Find the "Top Result" field
+                                            const topResult = cardData.fields.find(field => field.fieldLabel === 'Top Result:');
+                                            if (topResult) {
+                                                addMessage(topResult.fieldValue, 'bot-message');
+                                                if (isDebug) {
+                                                    addDebugMessage('Added top result message:', topResult.fieldValue);
                                                 }
-                                            });
+                                            }
+                                            
+                                            // Add link if present
+                                            const linkField = cardData.fields.find(field => field.fieldLabel.includes('KB'));
+                                            if (linkField) {
+                                                const linkMessage = `Learn more: ${linkField.fieldValue}`;
+                                                addMessage(linkMessage, 'bot-message link-message');
+                                                if (isDebug) {
+                                                    addDebugMessage('Added link message:', linkMessage);
+                                                }
+                                            }
                                         } catch (e) {
                                             console.error('Failed to parse card data:', e);
                                             if (isDebug) {
@@ -226,6 +240,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                         // Add picker options as a message
                                         const pickerMessage = `${item.label}\n${item.options.map(opt => `- ${opt.label}`).join('\n')}`;
                                         addMessage(pickerMessage, 'bot-message picker-message');
+                                        if (isDebug) {
+                                            addDebugMessage('Added picker message:', pickerMessage);
+                                        }
                                     }
                                 });
                                 

@@ -22,6 +22,15 @@
     --system-message-text: #856404;
     --debug-message-bg: #e8f5e9;
     --debug-message-text: #1b5e20;
+    --bot-message-bg: #e9ecef;
+    --bot-message-text: #333333;
+    --link-message-bg: #2c3e50;
+    --link-message-text: #ecf0f1;
+    --link-message-hover-bg: #34495e;
+    --picker-message-bg: #2980b9;
+    --picker-message-text: #ecf0f1;
+    --error-message-bg: #e74c3c;
+    --error-message-text: #ecf0f1;
 }
 
 [data-theme="dark"] {
@@ -178,10 +187,13 @@ body {
 }
 
 .bot-message {
-    background-color: var(--message-bot-bg);
-    color: var(--message-bot-text);
-    margin-right: auto;
-    border-bottom-left-radius: 0.25rem;
+    background-color: var(--bot-message-bg);
+    color: var(--bot-message-text);
+    padding: 12px;
+    border-radius: 8px;
+    margin: 8px 0;
+    max-width: 80%;
+    word-wrap: break-word;
 }
 
 .bot-message .message-icon {
@@ -225,6 +237,39 @@ body {
     background-color: #442326;
     color: #ff8c95;
     border: 1px solid #583337;
+}
+
+.link-message {
+    background-color: var(--link-message-bg);
+    color: var(--link-message-text);
+    cursor: pointer;
+}
+
+.link-message:hover {
+    background-color: var(--link-message-hover-bg);
+}
+
+.picker-message {
+    background-color: var(--picker-message-bg);
+    color: var(--picker-message-text);
+    white-space: pre-line;
+}
+
+.error-message {
+    background-color: var(--error-message-bg);
+    color: var(--error-message-text);
+}
+
+.debug-message {
+    font-family: monospace;
+    background-color: var(--debug-message-bg);
+    color: var(--debug-message-text);
+    padding: 8px;
+    border-radius: 4px;
+    margin: 4px 0;
+    font-size: 0.9em;
+    white-space: pre-wrap;
+    word-wrap: break-word;
 }
 
 .welcome-message {
@@ -327,24 +372,6 @@ input:checked + .slider:before {
     background-color: var(--primary-color);
     color: white;
     border-color: var(--primary-color);
-}
-
-.debug-message {
-    background-color: var(--debug-message-bg);
-    color: var(--debug-message-text);
-    font-family: monospace;
-    font-size: 0.875rem;
-    padding: 1rem;
-    margin: 0.5rem 0;
-    border-radius: 0.5rem;
-    white-space: pre-wrap;
-    width: 100%;
-    max-width: 100%;
-    overflow-x: auto;
-}
-
-.debug-message pre {
-    margin: 0;
 }
 
 .debug-label {

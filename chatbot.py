@@ -17,6 +17,7 @@ import json
 import logging
 import uuid
 from typing import Optional
+import random
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -244,11 +245,46 @@ async def chat(chat_message: ChatMessage, user: Optional[User] = Depends(get_cur
 
     try:
         if chat_message.use_servicenow:
+            # Generate request ID
+            request_id = str(uuid.uuid4())
+            
+            # Create ServiceNow request payload
+            payload = {
+                "requestId": request_id,
+                "clientSessionId": chat_message.session_id[:6] if chat_message.session_id else "",
+                "nowSessionId": "",
+                "message": {
+                    "text": chat_message.message,
+                    "typed": "true",
+                    "clientMessageId": f"MSG-{random.randint(100000, 999999)}"
+                },
+                "userId": "beth.anglin"
+            }
+
+            logger.info("Sending request to ServiceNow with payload: %s", json.dumps(payload))
+
+            # Send request to ServiceNow
             response = servicenow_api.send_message_to_va(chat_message.message, chat_message.session_id)
+            
+            logger.info("ServiceNow Response Status: %s", response.status_code)
+            logger.info("ServiceNow Raw Response Content: %s", response.text)
+
+            # Parse response
+            try:
+                response_data = response
+            except json.JSONDecodeError:
+                response_data = {"status": "success"}
+
+            # Ensure response has a body field
+            if "body" not in response_data:
+                logger.warning("Response missing 'body' field, adding it")
+                response_data["body"] = []
+
             return {
                 "servicenow_response": {
-                    "body": response.get("body", []),
-                    "requestId": response.get("requestId")
+                    "status": "success",
+                    "body": response_data.get("body", []),
+                    "requestId": request_id
                 }
             }
         else:
@@ -367,22 +403,23 @@ async def servicenow_callback(
         raise HTTPException(status_code=400, detail=f"Error processing callback: {str(e)}")
 
 @app.get("/servicenow/responses/{request_id}")
-async def get_servicenow_responses(
-    request_id: str,
-    user: Optional[User] = Depends(get_current_user)
-):
-    if not user:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    
+async def get_servicenow_responses(request_id: str):
+    """Get responses for a specific request ID."""
     logger.info("Getting responses for request %s", request_id)
-    logger.info("Available responses: %s", json.dumps(pending_responses, indent=2))
-        
+    
     if request_id not in pending_responses:
         logger.warning("No responses found for request %s", request_id)
-        raise HTTPException(status_code=404, detail="No responses found for this request")
-        
+        return {
+            "servicenow_response": {
+                "status": "success",
+                "body": []
+            }
+        }
+    
+    # Get the responses
     responses = pending_responses[request_id]
-    # Clear the responses after sending them
+    
+    # Remove from pending after retrieving
     del pending_responses[request_id]
     
     logger.info("Returning responses for request %s: %s", 
@@ -390,8 +427,8 @@ async def get_servicenow_responses(
     
     return {
         "servicenow_response": {
-            "body": responses,
-            "requestId": request_id
+            "status": "success",
+            "body": responses
         }
     }
 

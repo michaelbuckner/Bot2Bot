@@ -135,7 +135,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Start polling for responses
                     let attempts = 0;
-                    const maxAttempts = 10;
+                    const maxAttempts = 30; // Increase max attempts
                     const pollInterval = setInterval(async () => {
                         try {
                             if (attempts >= maxAttempts) {
@@ -144,7 +144,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 return;
                             }
                             
-                            const pollResponse = await fetch(`https://bot2bot.sliplane.app/servicenow/responses/${requestId}`, {
+                            const pollResponse = await fetch(`/servicenow/responses/${requestId}`, {
                                 method: 'GET',
                                 headers: {
                                     'Content-Type': 'application/json',
@@ -152,11 +152,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             });
                             
                             if (!pollResponse.ok) {
-                                if (pollResponse.status === 404) {
-                                    // No more responses for this request
-                                    clearInterval(pollInterval);
-                                    return;
-                                }
                                 throw new Error(`Poll failed: ${pollResponse.statusText}`);
                             }
                             
@@ -165,28 +160,35 @@ document.addEventListener('DOMContentLoaded', function() {
                                 addDebugMessage('Poll Response:', pollData);
                             }
                             
-                            if (pollData.servicenow_response && Array.isArray(pollData.servicenow_response.body)) {
-                                pollData.servicenow_response.body.forEach(item => {
-                                    if (item.uiType === 'OutputText') {
-                                        const parsed = tryParseJson(item.value);
-                                        if (parsed && parsed.uiType === 'ActionMsg') {
-                                            if (parsed.actionType === 'System') {
-                                                addMessage(parsed.message, 'bot-message system-message');
-                                            } else {
-                                                addMessage(JSON.stringify(parsed), 'bot-message');
+                            if (pollData.servicenow_response && pollData.servicenow_response.body) {
+                                const messages = pollData.servicenow_response.body;
+                                if (messages.length > 0) {
+                                    messages.forEach(item => {
+                                        if (item.uiType === 'OutputCard') {
+                                            try {
+                                                const cardData = JSON.parse(item.data);
+                                                cardData.fields.forEach(field => {
+                                                    if (field.fieldLabel === 'Top Result:') {
+                                                        addMessage(field.fieldValue, 'bot-message');
+                                                    }
+                                                });
+                                            } catch (e) {
+                                                console.error('Failed to parse card data:', e);
+                                                addMessage(JSON.stringify(item), 'bot-message');
                                             }
-                                        } else {
-                                            addMessage(item.value, 'bot-message');
+                                        } else if (item.uiType === 'Picker') {
+                                            // Handle picker if needed
+                                            console.log('Picker received:', item);
+                                        } else if (item.uiType === 'ActionMsg') {
+                                            if (item.actionType === 'System') {
+                                                addMessage(item.message, 'bot-message system-message');
+                                            }
                                         }
-                                    } else if (item.uiType === 'ActionMsg' && item.actionType === 'System') {
-                                        addMessage(item.message, 'bot-message system-message');
-                                    } else {
-                                        addMessage(JSON.stringify(item), 'bot-message');
-                                    }
-                                });
-                                
-                                // Clear interval after receiving responses
-                                clearInterval(pollInterval);
+                                    });
+                                    
+                                    // Clear interval after receiving responses
+                                    clearInterval(pollInterval);
+                                }
                             }
                             
                             attempts++;

@@ -3,42 +3,46 @@ from typing import Dict
 import requests
 from dotenv import load_dotenv
 from openai import OpenAI
-from fastapi import FastAPI, HTTPException, Request, Response, Depends
+from fastapi import FastAPI, HTTPException, Request, Response, Depends, Cookie, Header, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials, OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
 import time
-from fastapi.middleware.cors import CORSMiddleware
-import hmac
-import hashlib
 import json
 import logging
+from jose import jwt
+from jose.exceptions import JWTError
+from datetime import datetime, timedelta
 import uuid
 from typing import Optional
 import random
+from fastapi.middleware.cors import CORSMiddleware
 
 # Set up logging
 logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+logger.addHandler(handler)
 
 # Load environment variables
 load_dotenv()
 
+# JWT Settings
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here")  # Change in production
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
 app = FastAPI()
-client = OpenAI()
-
-# Mount static files and templates
-static_files = StaticFiles(directory="static")
-app.mount("/static", static_files, name="static")
-templates = Jinja2Templates(directory="templates")
-
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -46,6 +50,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+client = OpenAI()
+
+# Mount static files and templates
+static_files = StaticFiles(directory="static")
+app.mount("/static", static_files, name="static")
+templates = Jinja2Templates(directory="templates")
 
 # Add these new classes for login
 class LoginRequest(BaseModel):
@@ -58,11 +69,35 @@ class User(BaseModel):
 # Add session management
 sessions = {}
 
-def get_current_user(request: Request) -> Optional[User]:
-    session_id = request.cookies.get("session_id")
-    if session_id and session_id in sessions:
-        return sessions[session_id]
-    return None
+# Update the get_current_user dependency
+async def get_current_user(
+    session: str = Cookie(None),
+    authorization: str = Header(None)
+) -> Optional[User]:
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    # Try to get token from cookie first, then authorization header
+    token = None
+    if session and session.startswith("Bearer "):
+        token = session[7:]
+    elif authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+        
+    if not token:
+        return None
+        
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            return None
+        return User(username=username)
+    except JWTError:
+        return None
 
 # Update the root route to check for authentication
 @app.get("/", response_class=HTMLResponse)
@@ -78,7 +113,7 @@ async def login_page(request: Request, user: Optional[User] = Depends(get_curren
         return RedirectResponse(url="/")
     return templates.TemplateResponse("login.html", {"request": request})
 
-# Add login endpoint
+# Update the login endpoint
 @app.post("/login")
 async def login(login_request: LoginRequest):
     try:
@@ -90,15 +125,19 @@ async def login(login_request: LoginRequest):
     if (login_request.username in users and 
         users[login_request.username]["password"] == login_request.password):
         
-        session_id = str(uuid.uuid4())
-        sessions[session_id] = User(username=login_request.username)
+        access_token = create_access_token({"sub": login_request.username})
         
-        response = Response(content=json.dumps({"message": "Login successful"}),
-                            media_type="application/json")
-        response.set_cookie(key="session_id", 
-                            value=session_id,
-                            httponly=True,
-                            max_age=3600)  # 1 hour
+        response = JSONResponse(
+            content={"access_token": access_token, "token_type": "bearer"}
+        )
+        response.set_cookie(
+            key="session",
+            value=f"Bearer {access_token}",
+            httponly=True,
+            secure=False,  # Set to True in production
+            samesite='lax',
+            max_age=1800  # 30 minutes
+        )
         return response
     
     raise HTTPException(status_code=401, detail="Invalid username or password")
@@ -107,7 +146,7 @@ async def login(login_request: LoginRequest):
 @app.post("/logout")
 async def logout(response: Response):
     response = RedirectResponse(url="/login")
-    response.delete_cookie(key="session_id")
+    response.delete_cookie(key="session")
     return response
 
 class ChatMessage(BaseModel):

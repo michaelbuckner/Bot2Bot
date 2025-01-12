@@ -160,7 +160,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                 method: 'GET',
                                 headers: {
                                     'Content-Type': 'application/json',
-                                }
+                                },
+                                credentials: 'same-origin'  // Include cookies for authentication
                             });
                             
                             if (!pollResponse.ok) {

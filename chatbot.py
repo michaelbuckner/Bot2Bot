@@ -354,8 +354,14 @@ async def servicenow_callback(
         raise HTTPException(status_code=400, detail=f"Error processing callback: {str(e)}")
 
 @app.get("/servicenow/responses/{request_id}")
-async def get_servicenow_responses(request_id: str):
+async def get_servicenow_responses(
+    request_id: str,
+    user: Optional[User] = Depends(get_current_user)
+):
     """Get responses for a specific request ID."""
+    
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
     
     logger.info("Getting responses for request %s", request_id)
     

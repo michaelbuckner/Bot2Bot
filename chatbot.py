@@ -303,23 +303,43 @@ async def servicenow_callback(
             logger.warning("No requestId in callback")
             return {"status": "error", "message": "No requestId in callback"}
 
+        logger.info("Processing callback for requestId: %s", request_id)
+        logger.info("Current pending_responses: %s", json.dumps(pending_responses, indent=2))
+
         # Process the callback body
         if callback.body:
             if isinstance(callback.body, list):
                 # Filter out spinner/action messages
-                content_messages = [
-                    msg for msg in callback.body
-                    if isinstance(msg, dict) and 
-                    msg.get('uiType') not in ['ActionMsg']
-                ]
-                
+                content_messages = []
+                for msg in callback.body:
+                    if isinstance(msg, dict):
+                        if msg.get('uiType') == 'OutputText':
+                            try:
+                                # Try to parse the value as JSON
+                                parsed = json.loads(msg.get('value', '{}'))
+                                if parsed.get('uiType') == 'ActionMsg' and parsed.get('actionType') == 'StartConversation':
+                                    logger.debug("Skipping StartConversation message")
+                                    continue
+                            except (json.JSONDecodeError, AttributeError):
+                                pass
+                        content_messages.append(msg)
+
                 if content_messages:
-                    logger.info("Storing %d messages for request %s", len(content_messages), request_id)
+                    logger.info("Storing %d messages for request %s: %s", 
+                              len(content_messages), request_id, 
+                              json.dumps(content_messages, indent=2))
+                    
                     # Append new messages to existing ones
                     if request_id in pending_responses:
                         pending_responses[request_id].extend(content_messages)
+                        logger.info("Updated pending_responses for %s: %s", 
+                                  request_id, 
+                                  json.dumps(pending_responses[request_id], indent=2))
                     else:
                         pending_responses[request_id] = content_messages
+                        logger.info("Created new pending_responses for %s: %s", 
+                                  request_id, 
+                                  json.dumps(content_messages, indent=2))
                 else:
                     logger.debug("No content messages in callback for request %s", request_id)
             else:
@@ -335,7 +355,6 @@ async def servicenow_callback(
         logger.error("Error processing ServiceNow callback: %s", str(e), exc_info=True)
         raise HTTPException(status_code=400, detail=f"Error processing callback: {str(e)}")
 
-# Add an endpoint to get pending responses
 @app.get("/servicenow/responses/{request_id}")
 async def get_servicenow_responses(
     request_id: str,
@@ -343,13 +362,21 @@ async def get_servicenow_responses(
 ):
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    logger.info("Getting responses for request %s", request_id)
+    logger.info("Available responses: %s", json.dumps(pending_responses, indent=2))
         
     if request_id not in pending_responses:
+        logger.warning("No responses found for request %s", request_id)
         raise HTTPException(status_code=404, detail="No responses found for this request")
         
     responses = pending_responses[request_id]
     # Clear the responses after sending them
     del pending_responses[request_id]
+    
+    logger.info("Returning responses for request %s: %s", 
+               request_id, 
+               json.dumps(responses, indent=2))
     
     return {
         "servicenow_response": {

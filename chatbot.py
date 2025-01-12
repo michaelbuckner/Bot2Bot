@@ -146,7 +146,8 @@ class ServiceNowAPI:
                     "typed": "true",
                     "clientMessageId": client_message_id
                 },
-                "userId": "beth.anglin"
+                "userId": "beth.anglin",
+                "callbackUrl": f"{os.getenv('BASE_URL')}/servicenow/callback"
             })
 
             signature = self.generate_signature(payload)
@@ -282,6 +283,47 @@ class ServiceNowAPI:
                 }]
             }
 
+class ServiceNowCallback(BaseModel):
+    conversationId: str
+    body: list
+
+class AsyncResponse(BaseModel):
+    request_id: str
+    status: str
+    message: str
+
+# Basic auth security
+security = HTTPBasic()
+
+def verify_callback_credentials(credentials: HTTPBasicCredentials):
+    correct_username = os.getenv("CALLBACK_USERNAME")
+    correct_password = os.getenv("CALLBACK_PASSWORD")
+    
+    if not (credentials.username == correct_username and 
+            credentials.password == correct_password):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid credentials",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return True
+
+# Store pending responses
+pending_responses = {}
+
+@app.post("/servicenow/callback")
+async def servicenow_callback(
+    callback: ServiceNowCallback,
+    credentials: HTTPBasicCredentials = Depends(security)
+):
+    verify_callback_credentials(credentials)
+    
+    # Store the response in pending_responses
+    if callback.conversationId in pending_responses:
+        pending_responses[callback.conversationId] = callback.body
+        
+    return {"status": "success"}
+
 servicenow_api = ServiceNowAPI(
     instance_url=os.getenv('SERVICENOW_INSTANCE'),
     username=os.getenv('SERVICENOW_USERNAME'),
@@ -308,21 +350,19 @@ async def chat(chat_message: ChatMessage, user: Optional[User] = Depends(get_cur
     """Handle chat messages"""
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
+        
     try:
         if chat_message.use_servicenow:
-            try:
-                snow_response = servicenow_api.send_message_to_va(
-                    chat_message.message,
-                    chat_message.session_id
-                )
-                logger.info("ServiceNow response received: %s", json.dumps(snow_response, indent=2))
-                return {"servicenow_response": snow_response}
-            except Exception as snow_error:
-                logger.error("ServiceNow Error: %s", str(snow_error))
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"ServiceNow Error: {str(snow_error)}"
-                )
+            response = servicenow_api.send_message_to_va(
+                chat_message.message, 
+                chat_message.session_id
+            )
+            # Return immediately with a pending status
+            return AsyncResponse(
+                request_id=response.get("requestId"),
+                status="pending",
+                message="Request is being processed"
+            )
         else:
             try:
                 gpt_response = get_gpt_response(chat_message.message)

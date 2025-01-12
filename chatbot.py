@@ -220,28 +220,34 @@ async def chat(
     request: ChatMessage,
     user: Optional[User] = Depends(get_current_user)
 ):
+    """Handle chat messages from the frontend."""
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     try:
         if request.use_servicenow:
-            # Send request to ServiceNow and get response
+            # Send to ServiceNow
             response = servicenow_api.send_message_to_va(request.message, request.session_id)
+            logger.info("ServiceNow API Response: %s", response)
             
-            if response.get("status") == "error":
-                raise HTTPException(status_code=500, detail=response.get("error"))
-            
-            # Return success with requestId for async processing
-            return {
-                "servicenow_response": {
-                    "status": "success",
-                    "requestId": response.get("requestId"),
-                    "body": []  # Initial empty body, content will come through callbacks
+            if response.get("status") == "success":
+                return {
+                    "servicenow_response": {
+                        "status": "success",
+                        "requestId": response.get("requestId")
+                    }
                 }
-            }
+            else:
+                logger.error("ServiceNow API Error: %s", response.get("error"))
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"ServiceNow API Error: {response.get('error', 'Unknown error')}"
+                )
         else:
-            gpt_response = get_gpt_response(request.message)
-            return {"response": gpt_response}
+            # Use GPT
+            response = get_gpt_response(request.message)
+            return {"response": response}
+            
     except Exception as e:
         logger.error("Error in chat endpoint: %s", str(e))
         raise HTTPException(status_code=500, detail=str(e))

@@ -157,6 +157,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Start polling for responses
                     let attempts = 0;
                     const maxAttempts = 30; // 30 seconds timeout
+                    
                     const pollInterval = setInterval(async () => {
                         try {
                             if (attempts >= maxAttempts) {
@@ -294,6 +295,16 @@ document.addEventListener('DOMContentLoaded', function() {
                             }
                         }
                     }, 1000);
+                } else {
+                    if (isDebug) {
+                        addDebugMessage('No requestId in response:', data);
+                    }
+                    addMessage('Error: No request ID received', 'bot-message error-message');
+                }
+            } else {
+                // Handle GPT response
+                if (data.response) {
+                    addMessage(data.response, 'bot-message');
                 }
             }
         } catch (error) {

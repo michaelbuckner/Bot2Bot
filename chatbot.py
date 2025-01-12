@@ -1,6 +1,12 @@
 import os
-from typing import Dict
+import json
+import hmac
+import hashlib
+import logging
+import uuid
 import requests
+import time
+from typing import Dict, Optional
 from dotenv import load_dotenv
 from openai import OpenAI
 from fastapi import FastAPI, HTTPException, Request, Response, Depends
@@ -8,15 +14,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from pydantic import BaseModel, Field
-import time
 from fastapi.middleware.cors import CORSMiddleware
-import hmac
-import hashlib
-import json
-import logging
-import uuid
-from typing import Optional
+from pydantic import BaseModel, Field
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -25,12 +24,12 @@ logger.setLevel(logging.INFO)
 # Load environment variables
 load_dotenv()
 
+# Initialize FastAPI and OpenAI client
 app = FastAPI()
 client = OpenAI()
 
 # Mount static files and templates
-static_files = StaticFiles(directory="static")
-app.mount("/static", static_files, name="static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 # Add CORS middleware
@@ -42,7 +41,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add these new classes for login
+# Models
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -50,65 +49,111 @@ class LoginRequest(BaseModel):
 class User(BaseModel):
     username: str
 
-# Add session management
+class ChatMessage(BaseModel):
+    message: str
+    session_id: str
+    use_servicenow: bool = False
+
+class ServiceNowCallback(BaseModel):
+    requestId: Optional[str] = None
+    body: Optional[Dict | list] = None
+    clientSessionId: Optional[str] = None
+    message: Optional[Dict] = None
+
+    class Config:
+        extra = "allow"
+
+class AsyncResponse(BaseModel):
+    request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    status: str
+    message: str
+
+# Session management
 sessions = {}
 
 def get_current_user(request: Request) -> Optional[User]:
     session_id = request.cookies.get("session_id")
-    if session_id and session_id in sessions:
-        return sessions[session_id]
-    return None
+    return sessions.get(session_id) if session_id else None
 
-# Update the root route to check for authentication
+# Routes
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request, user: Optional[User] = Depends(get_current_user)):
     if not user:
         return RedirectResponse(url="/login")
     return templates.TemplateResponse("index.html", {"request": request})
 
-# Add login page route
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, user: Optional[User] = Depends(get_current_user)):
     if user:
         return RedirectResponse(url="/")
     return templates.TemplateResponse("login.html", {"request": request})
 
-# Add login endpoint
 @app.post("/login")
 async def login(login_request: LoginRequest):
     try:
         with open("users.json", "r") as f:
             users = json.load(f)
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="Error reading users database")
 
-    if (login_request.username in users and 
-        users[login_request.username]["password"] == login_request.password):
-        
+    user_data = users.get(login_request.username)
+    if user_data and user_data["password"] == login_request.password:
         session_id = str(uuid.uuid4())
         sessions[session_id] = User(username=login_request.username)
-        
-        response = Response(content=json.dumps({"message": "Login successful"}),
-                          media_type="application/json")
-        response.set_cookie(key="session_id", 
-                          value=session_id,
-                          httponly=True,
-                          max_age=3600)  # 1 hour
+        response = Response(content=json.dumps({"message": "Login successful"}), media_type="application/json")
+        response.set_cookie(key="session_id", value=session_id, httponly=True, max_age=3600)
         return response
-    
+
     raise HTTPException(status_code=401, detail="Invalid username or password")
 
-# Add logout endpoint
 @app.post("/logout")
 async def logout(response: Response):
     response = RedirectResponse(url="/login")
     response.delete_cookie(key="session_id")
     return response
 
-class ChatMessage(BaseModel):
-    message: str
-    session_id: str
-    use_servicenow: bool = False
+@app.post("/chat")
+async def chat(chat_message: ChatMessage, user: Optional[User] = Depends(get_current_user)):
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        if chat_message.use_servicenow:
+            response = servicenow_api.send_message_to_va(chat_message.message, chat_message.session_id)
+            return {
+                "servicenow_response": {
+                    "body": response.get("body", []),
+                    "requestId": response.get("requestId")
+                }
+            }
+        else:
+            gpt_response = get_gpt_response(chat_message.message)
+            return {"response": gpt_response}
+    except Exception as e:
+        logger.error("Error in chat endpoint: %s", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/servicenow/callback")
+async def servicenow_callback(request: Request, credentials: HTTPBasicCredentials = Depends(HTTPBasic())):
+    verify_callback_credentials(credentials)
+    body = await request.json()
+    logger.info("Received callback from ServiceNow: %s", json.dumps(body, indent=2))
+
+    try:
+        callback = ServiceNowCallback(**body)
+        if callback.requestId:
+            pending_responses[callback.requestId] = callback.body or []
+        return {"status": "success"}
+    except Exception as e:
+        logger.error("Error processing ServiceNow callback: %s", str(e), exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Error processing callback: {str(e)}")
+
+# Helper functions
+def verify_callback_credentials(credentials: HTTPBasicCredentials):
+    correct_username = os.getenv("CALLBACK_USERNAME")
+    correct_password = os.getenv("CALLBACK_PASSWORD")
+    if credentials.username != correct_username or credentials.password != correct_password:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
 
 class ServiceNowAPI:
     def __init__(self, instance_url, username, password, token):
@@ -150,7 +195,6 @@ class ServiceNowAPI:
             })
 
             signature = self.generate_signature(payload)
-
             headers = {
                 'Content-Type': 'application/json',
                 'x-b2b-signature': signature
@@ -170,38 +214,10 @@ class ServiceNowAPI:
             response.raise_for_status()
             response_data = response.json()
 
-            # If the top-level is a list, capture the conversationId and remove StartConversation items
-            requestId = None
-            if isinstance(response_data, list):
-                filtered_response = []
-                for item in response_data:
-                    if item.get("uiType") == "OutputText":
-                        try:
-                            parsed_value = json.loads(item.get("value", "{}"))
-                            if (parsed_value.get("uiType") == "ActionMsg"
-                                and parsed_value.get("actionType") == "StartConversation"):
-                                requestId = parsed_value.get("requestId")
-                                continue  # skip adding this item to filtered_response
-                        except (ValueError, TypeError, json.JSONDecodeError):
-                            pass
-                    filtered_response.append(item)
-
-                # Store filtered items under "body"
-                # and keep the requestId for reference in the final output
-                response_data = {
-                    "requestId": requestId,
-                    "body": filtered_response
-                }
-
-            # Log details
-            logger.info("Captured requestId: %s", requestId)
-            logger.info("ServiceNow Response Type: %s", type(response_data))
-
             # Ensure response_data is a dict with "body" as a list
             if not isinstance(response_data, dict):
-                logger.warning("Response is not a dictionary, wrapping it")
                 response_data = {
-                    "requestId": requestId,
+                    "requestId": request_id,
                     "body": [{
                         "uiType": "OutputText",
                         "value": str(response_data)
@@ -214,42 +230,11 @@ class ServiceNowAPI:
                     "value": json.dumps(response_data)
                 }]
             elif not isinstance(response_data["body"], list):
-                logger.warning("Body is not a list, converting it")
                 response_data["body"] = [{
                     "uiType": "OutputText",
                     "value": str(response_data["body"])
                 }]
 
-            # Validate each item in the body
-            validated_body = []
-            for item in response_data.get("body", []):
-                if isinstance(item, dict) and "value" in item:
-                    try:
-                        parsed_value = json.loads(item["value"])
-                        # Skip if it's another StartConversation
-                        if (parsed_value.get("uiType") == "ActionMsg"
-                            and parsed_value.get("actionType") == "StartConversation"):
-                            continue
-                    except (ValueError, TypeError):
-                        pass
-
-                # Basic validation
-                if not isinstance(item, dict):
-                    validated_body.append({
-                        "uiType": "OutputText",
-                        "value": str(item)
-                    })
-                elif "uiType" not in item or "value" not in item:
-                    validated_body.append({
-                        "uiType": "OutputText",
-                        "value": json.dumps(item)
-                    })
-                else:
-                    validated_body.append(item)
-
-            response_data["body"] = validated_body
-
-            logger.info("Final normalized response: %s", json.dumps(response_data))
             return response_data
 
         except requests.exceptions.RequestException as e:
@@ -263,15 +248,6 @@ class ServiceNowAPI:
                     "value": f"Error communicating with ServiceNow: {str(e)}"
                 }]
             }
-        except json.JSONDecodeError as e:
-            logger.error("JSON decode error: %s", str(e))
-            return {
-                "requestId": None,
-                "body": [{
-                    "uiType": "OutputText",
-                    "value": f"Invalid JSON response from ServiceNow: {str(e)}"
-                }]
-            }
         except Exception as e:
             logger.error("Unexpected error: %s", str(e))
             return {
@@ -282,85 +258,7 @@ class ServiceNowAPI:
                 }]
             }
 
-class ServiceNowCallback(BaseModel):
-    requestId: str | None = None
-    body: list | dict | None = None
-    clientSessionId: str | None = None
-    message: dict | None = None
-
-    # Allow additional fields
-    class Config:
-        extra = "allow"
-
-class AsyncResponse(BaseModel):
-    request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    status: str
-    message: str
-
-# Basic auth security
-security = HTTPBasic()
-
-def verify_callback_credentials(credentials: HTTPBasicCredentials):
-    correct_username = os.getenv("CALLBACK_USERNAME")
-    correct_password = os.getenv("CALLBACK_PASSWORD")
-    
-    if not (credentials.username == correct_username and 
-            credentials.password == correct_password):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid credentials",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return True
-
-# Store pending responses
-pending_responses = {}
-
-@app.post("/servicenow/callback")
-async def servicenow_callback(
-    request: Request,
-    credentials: HTTPBasicCredentials = Depends(security)
-):
-    verify_callback_credentials(credentials)
-    
-    # Log the raw request body for debugging
-    body = await request.json()
-    logger.info("Received callback from ServiceNow: %s", json.dumps(body, indent=2))
-    
-    try:
-        # Parse the callback data
-        callback = ServiceNowCallback(**body)
-        
-        # Store the response in pending_responses if we have a request ID
-        if callback.requestId:
-            if isinstance(callback.body, (list, dict)):
-                # Only store responses that contain actual content (not just spinner actions)
-                content_responses = [
-                    item for item in callback.body 
-                    if isinstance(item, dict) and 
-                    item.get('uiType') not in ['ActionMsg']
-                ]
-                
-                if content_responses:
-                    pending_responses[callback.requestId] = content_responses
-                    logger.info("Stored response for request %s", callback.requestId)
-                else:
-                    logger.debug("Skipping spinner message for request %s", callback.requestId)
-            else:
-                logger.warning("Received invalid body format for request %s: %s", 
-                             callback.requestId, callback.body)
-        else:
-            logger.warning("No request ID in callback: %s", body)
-            
-        return {"status": "success"}
-        
-    except Exception as e:
-        logger.error("Error processing ServiceNow callback: %s", str(e), exc_info=True)
-        raise HTTPException(
-            status_code=400,
-            detail=f"Error processing callback: {str(e)}"
-        )
-
+# Initialize ServiceNow API client
 servicenow_api = ServiceNowAPI(
     instance_url=os.getenv('SERVICENOW_INSTANCE'),
     username=os.getenv('SERVICENOW_USERNAME'),
@@ -369,7 +267,6 @@ servicenow_api = ServiceNowAPI(
 )
 
 def get_gpt_response(message: str) -> str:
-    """Get response from GPT"""
     try:
         response = client.chat.completions.create(
             model="gpt-4",
@@ -382,69 +279,7 @@ def get_gpt_response(message: str) -> str:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"GPT API error: {str(e)}")
 
-@app.post("/chat")
-async def chat(chat_message: ChatMessage, user: Optional[User] = Depends(get_current_user)):
-    """Handle chat messages"""
-    if not user:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-        
-    try:
-        if chat_message.use_servicenow:
-            try:
-                logger.info("Sending message to ServiceNow: %s", chat_message.message)
-                response = servicenow_api.send_message_to_va(
-                    chat_message.message, 
-                    chat_message.session_id
-                )
-                
-                logger.info("Raw ServiceNow response: %s", json.dumps(response, indent=2))
-                
-                # Get the request ID from the response
-                request_id = response.get("requestId")
-                if not request_id:
-                    request_id = str(uuid.uuid4())
-                    logger.warning("No requestId in response, generated: %s", request_id)
-                else:
-                    logger.info("Using requestId from response: %s", request_id)
-                
-                # Store initial response body if it contains content
-                response_body = response.get("body", [])
-                content_responses = [
-                    item for item in response_body 
-                    if isinstance(item, dict) and 
-                    item.get('uiType') not in ['ActionMsg']
-                ]
-                
-                if content_responses:
-                    pending_responses[request_id] = content_responses
-                    logger.info("Stored initial response body: %s", json.dumps(content_responses, indent=2))
-                
-                # Return immediately with a pending status
-                return AsyncResponse(
-                    request_id=request_id,
-                    status="pending",
-                    message="Request is being processed"
-                )
-            except Exception as e:
-                logger.error("ServiceNow Error: %s", str(e), exc_info=True)
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Error communicating with ServiceNow: {str(e)}"
-                )
-        else:
-            try:
-                gpt_response = get_gpt_response(chat_message.message)
-                return {"response": gpt_response}
-            except Exception as gpt_error:
-                logger.error("GPT Error: %s", str(gpt_error))
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"GPT Error: {str(gpt_error)}"
-                )
-    except Exception as e:
-        logger.error("Error in chat endpoint: %s", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
-
+# Main execution
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

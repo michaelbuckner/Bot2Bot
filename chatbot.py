@@ -283,8 +283,12 @@ class ServiceNowAPI:
             }
 
 class ServiceNowCallback(BaseModel):
-    conversationId: str
-    body: list
+    conversationId: str | None = None
+    body: list | dict | None = None
+
+    # Allow additional fields
+    class Config:
+        extra = "allow"
 
 class AsyncResponse(BaseModel):
     request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -312,16 +316,38 @@ pending_responses = {}
 
 @app.post("/servicenow/callback")
 async def servicenow_callback(
-    callback: ServiceNowCallback,
+    request: Request,
     credentials: HTTPBasicCredentials = Depends(security)
 ):
     verify_callback_credentials(credentials)
     
-    # Store the response in pending_responses
-    if callback.conversationId in pending_responses:
-        pending_responses[callback.conversationId] = callback.body
+    # Log the raw request body for debugging
+    body = await request.json()
+    logger.info("Received callback from ServiceNow: %s", json.dumps(body, indent=2))
+    
+    try:
+        # Parse the callback data
+        callback = ServiceNowCallback(**body)
         
-    return {"status": "success"}
+        # Store the response in pending_responses if we have a conversation ID
+        if callback.conversationId:
+            if isinstance(callback.body, (list, dict)):
+                pending_responses[callback.conversationId] = callback.body
+                logger.info("Stored response for conversation %s", callback.conversationId)
+            else:
+                logger.warning("Received invalid body format for conversation %s: %s", 
+                             callback.conversationId, callback.body)
+        else:
+            logger.warning("No conversation ID in callback: %s", body)
+            
+        return {"status": "success"}
+        
+    except Exception as e:
+        logger.error("Error processing ServiceNow callback: %s", str(e), exc_info=True)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Error processing callback: {str(e)}"
+        )
 
 servicenow_api = ServiceNowAPI(
     instance_url=os.getenv('SERVICENOW_INSTANCE'),

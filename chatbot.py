@@ -360,13 +360,18 @@ async def get_servicenow_responses(
 ):
     """Get responses for a specific request ID."""
     
-    if not user:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    logger.info("=== Polling request received ===")
+    logger.info("Request ID: %s", request_id)
+    logger.info("User: %s", user)
+    logger.info("Current pending_responses keys: %s", list(pending_responses.keys()))
     
-    logger.info("Getting responses for request %s", request_id)
+    if not user:
+        logger.warning("Unauthorized polling request")
+        raise HTTPException(status_code=401, detail="Unauthorized")
     
     if request_id not in pending_responses:
         logger.warning("No responses found for request %s", request_id)
+        logger.info("Available request IDs: %s", list(pending_responses.keys()))
         return {
             "servicenow_response": {
                 "status": "success",
@@ -376,14 +381,17 @@ async def get_servicenow_responses(
     
     # Get the responses
     responses = pending_responses[request_id]
+    logger.info("Found %d responses for request %s", len(responses), request_id)
     
     # Filter out spinner messages
     content_messages = [msg for msg in responses if msg.get("uiType") in ["OutputCard", "Picker"]]
+    logger.info("Filtered to %d content messages", len(content_messages))
     
     # Only remove from pending_responses if we have content messages
     if content_messages:
         del pending_responses[request_id]
         logger.info("Removed request %s from pending_responses after content delivery", request_id)
+        logger.info("Remaining request IDs: %s", list(pending_responses.keys()))
     
     logger.info("Returning responses for request %s: %s", 
                request_id, json.dumps(content_messages, indent=2))

@@ -133,6 +133,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.servicenow_response && data.servicenow_response.requestId) {
                     const requestId = data.servicenow_response.requestId;
                     
+                    if (isDebug) {
+                        addDebugMessage('Starting polling for request:', requestId);
+                    }
+                    
                     // Start polling for responses
                     let attempts = 0;
                     const maxAttempts = 30; // 30 seconds timeout
@@ -141,6 +145,9 @@ document.addEventListener('DOMContentLoaded', function() {
                             if (attempts >= maxAttempts) {
                                 clearInterval(pollInterval);
                                 addMessage('No more responses from ServiceNow', 'bot-message system-message');
+                                if (isDebug) {
+                                    addDebugMessage('Polling timed out after', maxAttempts, 'attempts');
+                                }
                                 return;
                             }
                             
@@ -161,10 +168,16 @@ document.addEventListener('DOMContentLoaded', function() {
                                 headers: {
                                     'Content-Type': 'application/json',
                                 },
-                                credentials: 'same-origin'  // Include cookies for authentication
+                                credentials: 'include'  // Include cookies for authentication
                             });
                             
                             if (!pollResponse.ok) {
+                                if (isDebug) {
+                                    addDebugMessage('Poll request failed:', {
+                                        status: pollResponse.status,
+                                        statusText: pollResponse.statusText
+                                    });
+                                }
                                 throw new Error(`Poll failed: ${pollResponse.status} ${pollResponse.statusText}`);
                             }
                             
@@ -175,6 +188,10 @@ document.addEventListener('DOMContentLoaded', function() {
                             
                             if (pollData.servicenow_response && pollData.servicenow_response.body) {
                                 const messages = pollData.servicenow_response.body;
+                                if (isDebug) {
+                                    addDebugMessage('Processing messages:', messages);
+                                }
+                                
                                 let hasContent = false;
                                 
                                 messages.forEach(item => {
@@ -182,6 +199,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                         hasContent = true;
                                         try {
                                             const cardData = JSON.parse(item.data);
+                                            if (isDebug) {
+                                                addDebugMessage('Card data:', cardData);
+                                            }
                                             cardData.fields.forEach(field => {
                                                 if (field.fieldLabel === 'Top Result:') {
                                                     addMessage(field.fieldValue, 'bot-message');
@@ -208,7 +228,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                     if (isDebug) {
                                         addDebugMessage('Polling completed successfully');
                                     }
+                                } else if (isDebug) {
+                                    addDebugMessage('No content messages in response');
                                 }
+                            } else if (isDebug) {
+                                addDebugMessage('No messages in response body');
                             }
                             
                             attempts++;
@@ -223,6 +247,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     }, 1000); // Poll every second
                 } else {
                     addMessage('Error: Invalid response format', 'bot-message error-message');
+                    if (isDebug) {
+                        addDebugMessage('Invalid response format:', data);
+                    }
                 }
             } else {
                 // Handle GPT response

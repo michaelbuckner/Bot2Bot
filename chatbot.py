@@ -296,12 +296,67 @@ async def servicenow_callback(
 
     try:
         callback = ServiceNowCallback(**body)
-        if callback.requestId:
-            pending_responses[callback.requestId] = callback.body or []
+        
+        # Extract request ID from the callback
+        request_id = callback.requestId
+        if not request_id:
+            logger.warning("No requestId in callback")
+            return {"status": "error", "message": "No requestId in callback"}
+
+        # Process the callback body
+        if callback.body:
+            if isinstance(callback.body, list):
+                # Filter out spinner/action messages
+                content_messages = [
+                    msg for msg in callback.body
+                    if isinstance(msg, dict) and 
+                    msg.get('uiType') not in ['ActionMsg']
+                ]
+                
+                if content_messages:
+                    logger.info("Storing %d messages for request %s", len(content_messages), request_id)
+                    # Append new messages to existing ones
+                    if request_id in pending_responses:
+                        pending_responses[request_id].extend(content_messages)
+                    else:
+                        pending_responses[request_id] = content_messages
+                else:
+                    logger.debug("No content messages in callback for request %s", request_id)
+            else:
+                # If body is not a list, wrap it in a list
+                logger.warning("Callback body is not a list, wrapping it: %s", callback.body)
+                pending_responses[request_id] = [{
+                    "uiType": "OutputText",
+                    "value": str(callback.body)
+                }]
+                
         return {"status": "success"}
     except Exception as e:
         logger.error("Error processing ServiceNow callback: %s", str(e), exc_info=True)
         raise HTTPException(status_code=400, detail=f"Error processing callback: {str(e)}")
+
+# Add an endpoint to get pending responses
+@app.get("/servicenow/responses/{request_id}")
+async def get_servicenow_responses(
+    request_id: str,
+    user: Optional[User] = Depends(get_current_user)
+):
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    if request_id not in pending_responses:
+        raise HTTPException(status_code=404, detail="No responses found for this request")
+        
+    responses = pending_responses[request_id]
+    # Clear the responses after sending them
+    del pending_responses[request_id]
+    
+    return {
+        "servicenow_response": {
+            "body": responses,
+            "requestId": request_id
+        }
+    }
 
 if __name__ == "__main__":
     import uvicorn

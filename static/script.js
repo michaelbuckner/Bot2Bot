@@ -130,33 +130,98 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (useServiceNow) {
                 // Check if we have a valid ServiceNow response structure
-                if (data.servicenow_response && Array.isArray(data.servicenow_response.body)) {
-                    // We iterate each item in the 'body'
-                    data.servicenow_response.body.forEach(item => {
-                        // If it's OutputText, we check whether 'value' is nested JSON
-                        if (item.uiType === 'OutputText') {
-                            const parsed = tryParseJson(item.value);
-                            if (parsed && parsed.uiType === 'ActionMsg') {
-                                // 'value' is actually JSON with an ActionMsg
-                                if (parsed.actionType === 'System') {
-                                    addMessage(parsed.message, 'bot-message system-message');
-                                } else {
-                                    // If you have other ActionMsg types, handle them
-                                    addMessage(JSON.stringify(parsed), 'bot-message');
-                                }
-                            } else {
-                                // Normal text
-                                addMessage(item.value, 'bot-message');
+                if (data.servicenow_response && data.servicenow_response.requestId) {
+                    const requestId = data.servicenow_response.requestId;
+                    
+                    // Start polling for responses
+                    let attempts = 0;
+                    const maxAttempts = 10;
+                    const pollInterval = setInterval(async () => {
+                        try {
+                            if (attempts >= maxAttempts) {
+                                clearInterval(pollInterval);
+                                addMessage('No more responses from ServiceNow', 'bot-message system-message');
+                                return;
                             }
-                        } else if (item.uiType === 'ActionMsg' && item.actionType === 'System') {
-                            addMessage(item.message, 'bot-message system-message');
-                        } else {
-                            // If desired, handle other UI types
-                            addMessage(JSON.stringify(item), 'bot-message');
+                            
+                            const pollResponse = await fetch(`https://bot2bot.sliplane.app/servicenow/responses/${requestId}`, {
+                                method: 'GET',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                }
+                            });
+                            
+                            if (!pollResponse.ok) {
+                                if (pollResponse.status === 404) {
+                                    // No more responses for this request
+                                    clearInterval(pollInterval);
+                                    return;
+                                }
+                                throw new Error(`Poll failed: ${pollResponse.statusText}`);
+                            }
+                            
+                            const pollData = await pollResponse.json();
+                            if (isDebug) {
+                                addDebugMessage('Poll Response:', pollData);
+                            }
+                            
+                            if (pollData.servicenow_response && Array.isArray(pollData.servicenow_response.body)) {
+                                pollData.servicenow_response.body.forEach(item => {
+                                    if (item.uiType === 'OutputText') {
+                                        const parsed = tryParseJson(item.value);
+                                        if (parsed && parsed.uiType === 'ActionMsg') {
+                                            if (parsed.actionType === 'System') {
+                                                addMessage(parsed.message, 'bot-message system-message');
+                                            } else {
+                                                addMessage(JSON.stringify(parsed), 'bot-message');
+                                            }
+                                        } else {
+                                            addMessage(item.value, 'bot-message');
+                                        }
+                                    } else if (item.uiType === 'ActionMsg' && item.actionType === 'System') {
+                                        addMessage(item.message, 'bot-message system-message');
+                                    } else {
+                                        addMessage(JSON.stringify(item), 'bot-message');
+                                    }
+                                });
+                                
+                                // Clear interval after receiving responses
+                                clearInterval(pollInterval);
+                            }
+                            
+                            attempts++;
+                        } catch (error) {
+                            console.error('Polling error:', error);
+                            if (isDebug) {
+                                addDebugMessage('Polling Error:', error);
+                            }
+                            clearInterval(pollInterval);
                         }
-                    });
+                    }, 1000); // Poll every second
+                    
+                    // Show initial response if any
+                    if (Array.isArray(data.servicenow_response.body)) {
+                        data.servicenow_response.body.forEach(item => {
+                            if (item.uiType === 'OutputText') {
+                                const parsed = tryParseJson(item.value);
+                                if (parsed && parsed.uiType === 'ActionMsg') {
+                                    if (parsed.actionType === 'System') {
+                                        addMessage(parsed.message, 'bot-message system-message');
+                                    } else {
+                                        addMessage(JSON.stringify(parsed), 'bot-message');
+                                    }
+                                } else {
+                                    addMessage(item.value, 'bot-message');
+                                }
+                            } else if (item.uiType === 'ActionMsg' && item.actionType === 'System') {
+                                addMessage(item.message, 'bot-message system-message');
+                            } else {
+                                addMessage(JSON.stringify(item), 'bot-message');
+                            }
+                        });
+                    }
                 } else {
-                    // If no valid body found, show an error
+                    // If no valid response found, show an error
                     addMessage('Received invalid response format from ServiceNow', 'bot-message error');
                     if (isDebug) {
                         addDebugMessage('Invalid ServiceNow Response:', data);

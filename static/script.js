@@ -1,5 +1,6 @@
 // Generate a random session ID for this chat session
 const sessionId = Math.random().toString(36).substring(7);
+let isDebug = false; // Global isDebug flag
 
 document.addEventListener('DOMContentLoaded', function() {
     // Get DOM elements
@@ -25,6 +26,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // Listen for toggle changes
     apiToggle.addEventListener('change', updateActiveMode);
 
+    // Update debug mode when toggle changes
+    debugToggle.addEventListener('change', function() {
+        isDebug = this.checked;
+        if (isDebug) {
+            addDebugMessage('Debug mode enabled');
+        }
+    });
+
     // Set initial dark mode state
     function initializeDarkMode() {
         const savedTheme = localStorage.getItem('theme');
@@ -48,6 +57,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initialize dark mode
     initializeDarkMode();
+
+    // Initialize debug mode
+    isDebug = debugToggle.checked;
 
     // Add click event listener for send button
     sendButton.addEventListener('click', sendMessage);
@@ -78,7 +90,6 @@ document.addEventListener('DOMContentLoaded', function() {
     async function sendMessage() {
         const message = messageInput.value.trim();
         const useServiceNow = apiToggle.checked;
-        const isDebug = debugToggle.checked;
         
         if (message === '') return;
         
@@ -300,7 +311,9 @@ document.addEventListener('DOMContentLoaded', function() {
         scrollToBottom();
     }
 
-    function addDebugMessage(label, data) {
+    function addDebugMessage(label, data = '') {
+        if (!isDebug) return;
+
         const debugDiv = document.createElement('div');
         debugDiv.className = 'debug-message';
         
@@ -309,18 +322,17 @@ document.addEventListener('DOMContentLoaded', function() {
         labelSpan.textContent = label;
         debugDiv.appendChild(labelSpan);
         
-        const pre = document.createElement('pre');
-        try {
-            // Handle Error objects specially
-            if (data instanceof Error) {
-                pre.textContent = `${data.name}: ${data.message}\n${data.stack || ''}`;
+        if (data) {
+            const dataSpan = document.createElement('span');
+            dataSpan.className = 'debug-data';
+            if (typeof data === 'object') {
+                dataSpan.textContent = JSON.stringify(data, null, 2);
             } else {
-                pre.textContent = JSON.stringify(data, null, 2);
+                dataSpan.textContent = data;
             }
-        } catch (e) {
-            pre.textContent = String(data);
+            debugDiv.appendChild(document.createElement('br'));
+            debugDiv.appendChild(dataSpan);
         }
-        debugDiv.appendChild(pre);
         
         chatMessages.appendChild(debugDiv);
         scrollToBottom();
@@ -332,7 +344,8 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        if (isDebug) {
+        // Safely call addDebugMessage if isDebug is defined
+        if (typeof isDebug !== 'undefined' && isDebug) {
             addDebugMessage('Adding message:', { content, className });
         }
 
@@ -363,7 +376,8 @@ document.addEventListener('DOMContentLoaded', function() {
         chatMessages.appendChild(messageDiv);
         scrollToBottom();
 
-        if (isDebug) {
+        // Safely call addDebugMessage if isDebug is defined
+        if (typeof isDebug !== 'undefined' && isDebug) {
             addDebugMessage('Message added successfully');
         }
     }

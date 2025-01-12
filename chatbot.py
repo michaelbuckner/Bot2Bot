@@ -358,6 +358,7 @@ async def servicenow_callback(
 async def get_servicenow_responses(
     request_id: str,
     request: Request,
+    acknowledge: bool = False,
     user: Optional[User] = Depends(get_current_user)
 ):
     """Get responses for a specific request ID."""
@@ -365,6 +366,7 @@ async def get_servicenow_responses(
     logger.info("=== Polling request received ===")
     logger.info("Request ID: %s", request_id)
     logger.info("User: %s", user)
+    logger.info("Acknowledge: %s", acknowledge)
     logger.info("Current pending_responses keys: %s", list(pending_responses.keys()))
     
     if not user:
@@ -389,10 +391,10 @@ async def get_servicenow_responses(
     content_messages = [msg for msg in responses if msg.get("uiType") in ["OutputCard", "Picker"]]
     logger.info("Filtered to %d content messages", len(content_messages))
     
-    # Only remove from pending_responses if we have content messages
-    if content_messages:
+    # Only remove from pending_responses if explicitly acknowledged
+    if acknowledge and content_messages:
         del pending_responses[request_id]
-        logger.info("Removed request %s from pending_responses after content delivery", request_id)
+        logger.info("Removed request %s from pending_responses after acknowledgment", request_id)
         logger.info("Remaining request IDs: %s", list(pending_responses.keys()))
     
     logger.info("Returning responses for request %s: %s", 

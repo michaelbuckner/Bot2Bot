@@ -247,6 +247,32 @@ document.addEventListener('DOMContentLoaded', function() {
                                 });
                                 
                                 if (hasContent) {
+                                    // Acknowledge the messages
+                                    try {
+                                        const ackResponse = await fetch(`${pollUrl}?acknowledge=true`, {
+                                            method: 'GET',
+                                            headers: {
+                                                'Content-Type': 'application/json',
+                                            },
+                                            credentials: 'include'
+                                        });
+                                        
+                                        if (!ackResponse.ok) {
+                                            if (isDebug) {
+                                                addDebugMessage('Failed to acknowledge messages:', {
+                                                    status: ackResponse.status,
+                                                    statusText: ackResponse.statusText
+                                                });
+                                            }
+                                        } else if (isDebug) {
+                                            addDebugMessage('Successfully acknowledged messages');
+                                        }
+                                    } catch (e) {
+                                        if (isDebug) {
+                                            addDebugMessage('Error acknowledging messages:', e);
+                                        }
+                                    }
+                                    
                                     clearInterval(pollInterval);
                                     if (isDebug) {
                                         addDebugMessage('Polling completed successfully');

@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import time
 from fastapi.middleware.cors import CORSMiddleware
 import hmac
@@ -287,7 +287,7 @@ class ServiceNowCallback(BaseModel):
     body: list
 
 class AsyncResponse(BaseModel):
-    request_id: str
+    request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     status: str
     message: str
 
@@ -357,16 +357,15 @@ async def chat(chat_message: ChatMessage, user: Optional[User] = Depends(get_cur
                 chat_message.session_id
             )
             
-            # Get the conversation_id from the response
-            conversation_id = response.get("conversationId")
+            # Generate a request ID if none is provided
+            request_id = response.get("conversationId") or str(uuid.uuid4())
             
             # Store the response body in pending_responses
-            if conversation_id:
-                pending_responses[conversation_id] = response.get("body", [])
+            pending_responses[request_id] = response.get("body", [])
             
             # Return immediately with a pending status
             return AsyncResponse(
-                request_id=conversation_id,  # Use conversation_id as the request_id
+                request_id=request_id,
                 status="pending",
                 message="Request is being processed"
             )

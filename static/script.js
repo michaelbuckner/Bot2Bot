@@ -144,7 +144,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 return;
                             }
                             
-                            const pollResponse = await fetch(`/servicenow/responses/${requestId}`, {
+                            const pollResponse = await fetch(`https://bot2bot.sliplane.app/servicenow/responses/${requestId}`, {
                                 method: 'GET',
                                 headers: {
                                     'Content-Type': 'application/json',

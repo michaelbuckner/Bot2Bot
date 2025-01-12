@@ -172,50 +172,26 @@ class ServiceNowAPI:
             logger.info("ServiceNow Raw Response Content: %s", response.text)
 
             response.raise_for_status()
-            response_data = response.json()
-
-            # Ensure response_data is a dict with "body" as a list
-            if not isinstance(response_data, dict):
-                response_data = {
-                    "requestId": request_id,
-                    "body": [{
-                        "uiType": "OutputText",
-                        "value": str(response_data)
-                    }]
-                }
-            elif "body" not in response_data:
-                logger.warning("Response missing 'body' field, adding it")
-                response_data["body"] = [{
-                    "uiType": "OutputText",
-                    "value": json.dumps(response_data)
-                }]
-            elif not isinstance(response_data["body"], list):
-                response_data["body"] = [{
-                    "uiType": "OutputText",
-                    "value": str(response_data["body"])
-                }]
-
-            return response_data
+            
+            # Return the requestId for async processing
+            return {
+                "status": "success",
+                "requestId": request_id
+            }
 
         except requests.exceptions.RequestException as e:
             logger.error("Error sending message to ServiceNow VA: %s", str(e))
             if hasattr(e.response, 'text'):
                 logger.error("Error response content: %s", e.response.text)
             return {
-                "requestId": None,
-                "body": [{
-                    "uiType": "OutputText",
-                    "value": f"Error communicating with ServiceNow: {str(e)}"
-                }]
+                "status": "error",
+                "error": f"Error communicating with ServiceNow: {str(e)}"
             }
         except Exception as e:
             logger.error("Unexpected error: %s", str(e))
             return {
-                "requestId": None,
-                "body": [{
-                    "uiType": "OutputText",
-                    "value": f"Unexpected error: {str(e)}"
-                }]
+                "status": "error",
+                "error": f"Unexpected error: {str(e)}"
             }
 
 servicenow_api = ServiceNowAPI(
@@ -248,36 +224,18 @@ async def chat(
 
     try:
         if request.use_servicenow:
-            # Generate request ID
-            request_id = str(uuid.uuid4())
-            
-            # Create ServiceNow request payload
-            payload = {
-                "requestId": request_id,
-                "clientSessionId": request.session_id[:6] if request.session_id else "",
-                "nowSessionId": "",
-                "message": {
-                    "text": request.message,
-                    "typed": "true",
-                    "clientMessageId": f"MSG-{random.randint(100000, 999999)}"
-                },
-                "userId": "beth.anglin"
-            }
-
-            logger.info("Sending request to ServiceNow with payload: %s", json.dumps(payload))
-
             # Send request to ServiceNow and get response
             response = servicenow_api.send_message_to_va(request.message, request.session_id)
             
-            # No need to check status_code since send_message_to_va returns a dict
-            logger.info("ServiceNow Raw Response Content: %s", json.dumps(response))
-
-            # Return response with request ID
+            if response.get("status") == "error":
+                raise HTTPException(status_code=500, detail=response.get("error"))
+            
+            # Return success with requestId for async processing
             return {
                 "servicenow_response": {
                     "status": "success",
-                    "body": response.get("body", []),
-                    "requestId": request_id
+                    "requestId": response.get("requestId"),
+                    "body": []  # Initial empty body, content will come through callbacks
                 }
             }
         else:

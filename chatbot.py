@@ -239,22 +239,25 @@ def get_gpt_response(message: str) -> str:
         raise HTTPException(status_code=500, detail=f"GPT API error: {str(e)}")
 
 @app.post("/chat")
-async def chat(chat_message: ChatMessage, user: Optional[User] = Depends(get_current_user)):
+async def chat(
+    request: ChatMessage,
+    user: Optional[User] = Depends(get_current_user)
+):
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     try:
-        if chat_message.use_servicenow:
+        if request.use_servicenow:
             # Generate request ID
             request_id = str(uuid.uuid4())
             
             # Create ServiceNow request payload
             payload = {
                 "requestId": request_id,
-                "clientSessionId": chat_message.session_id[:6] if chat_message.session_id else "",
+                "clientSessionId": request.session_id[:6] if request.session_id else "",
                 "nowSessionId": "",
                 "message": {
-                    "text": chat_message.message,
+                    "text": request.message,
                     "typed": "true",
                     "clientMessageId": f"MSG-{random.randint(100000, 999999)}"
                 },
@@ -263,32 +266,22 @@ async def chat(chat_message: ChatMessage, user: Optional[User] = Depends(get_cur
 
             logger.info("Sending request to ServiceNow with payload: %s", json.dumps(payload))
 
-            # Send request to ServiceNow
-            response = servicenow_api.send_message_to_va(chat_message.message, chat_message.session_id)
+            # Send request to ServiceNow and get response
+            response = servicenow_api.send_message_to_va(request.message, request.session_id)
             
-            logger.info("ServiceNow Response Status: %s", response.status_code)
-            logger.info("ServiceNow Raw Response Content: %s", response.text)
+            # No need to check status_code since send_message_to_va returns a dict
+            logger.info("ServiceNow Raw Response Content: %s", json.dumps(response))
 
-            # Parse response
-            try:
-                response_data = response
-            except json.JSONDecodeError:
-                response_data = {"status": "success"}
-
-            # Ensure response has a body field
-            if "body" not in response_data:
-                logger.warning("Response missing 'body' field, adding it")
-                response_data["body"] = []
-
+            # Return response with request ID
             return {
                 "servicenow_response": {
                     "status": "success",
-                    "body": response_data.get("body", []),
+                    "body": response.get("body", []),
                     "requestId": request_id
                 }
             }
         else:
-            gpt_response = get_gpt_response(chat_message.message)
+            gpt_response = get_gpt_response(request.message)
             return {"response": gpt_response}
     except Exception as e:
         logger.error("Error in chat endpoint: %s", str(e))

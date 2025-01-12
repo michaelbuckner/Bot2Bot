@@ -240,7 +240,7 @@ async def chat(
             }
         else:
             gpt_response = get_gpt_response(request.message)
-            return {"response": gpt_response}
+            return {"response": gpt_response, "requestId": str(uuid.uuid4())}
     except Exception as e:
         logger.error("Error in chat endpoint: %s", str(e))
         raise HTTPException(status_code=500, detail=str(e))

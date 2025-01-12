@@ -144,6 +144,10 @@ document.addEventListener('DOMContentLoaded', function() {
                                 return;
                             }
                             
+                            if (isDebug) {
+                                addDebugMessage('Polling attempt:', attempts);
+                            }
+
                             const pollResponse = await fetch(`https://bot2bot.sliplane.app/servicenow/responses/${requestId}`, {
                                 method: 'GET',
                                 headers: {
@@ -202,43 +206,16 @@ document.addEventListener('DOMContentLoaded', function() {
                                 addDebugMessage('Polling Error:', error);
                             }
                             clearInterval(pollInterval);
+                            addMessage('Error: Failed to get response', 'bot-message error-message');
                         }
                     }, 1000); // Poll every second
-                    
-                    // Show initial response if any
-                    if (Array.isArray(data.servicenow_response.body)) {
-                        data.servicenow_response.body.forEach(item => {
-                            if (item.uiType === 'OutputText') {
-                                const parsed = tryParseJson(item.value);
-                                if (parsed && parsed.uiType === 'ActionMsg') {
-                                    if (parsed.actionType === 'System') {
-                                        addMessage(parsed.message, 'bot-message system-message');
-                                    } else {
-                                        addMessage(JSON.stringify(parsed), 'bot-message');
-                                    }
-                                } else {
-                                    addMessage(item.value, 'bot-message');
-                                }
-                            } else if (item.uiType === 'ActionMsg' && item.actionType === 'System') {
-                                addMessage(item.message, 'bot-message system-message');
-                            } else {
-                                addMessage(JSON.stringify(item), 'bot-message');
-                            }
-                        });
-                    }
                 } else {
-                    // If no valid response found, show an error
-                    addMessage('Received invalid response format from ServiceNow', 'bot-message error');
-                    if (isDebug) {
-                        addDebugMessage('Invalid ServiceNow Response:', data);
-                    }
+                    addMessage('Error: Invalid response format', 'bot-message error-message');
                 }
             } else {
-                // GPT scenario
+                // Handle GPT response
                 if (data.response) {
                     addMessage(data.response, 'bot-message');
-                } else {
-                    addMessage('No GPT response found', 'bot-message error');
                 }
             }
         } catch (error) {

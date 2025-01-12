@@ -119,7 +119,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Get raw text (to confirm it's really JSON)
             const rawText = await response.text();
             if (isDebug) {
-                console.log('Raw response text:', rawText);
+                addDebugMessage('Raw response text:', rawText);
             }
 
             if (!response.ok) {
@@ -157,12 +157,12 @@ document.addEventListener('DOMContentLoaded', function() {
                                 return;
                             }
                             
+                            attempts++;
                             if (isDebug) {
-                                addDebugMessage(`Polling attempt ${attempts + 1}/${maxAttempts} for request ${requestId}`);
+                                addDebugMessage(`Polling attempt ${attempts}/${maxAttempts} for request ${requestId}`);
                             }
 
                             // Get the current URL's origin
-                            const origin = window.location.origin;
                             const pollUrl = `${origin}/servicenow/responses/${requestId}`;
                             
                             if (isDebug) {
@@ -200,7 +200,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 
                                 let hasContent = false;
                                 
-                                messages.forEach(item => {
+                                for (const item of messages) {
                                     if (item.uiType === 'OutputCard') {
                                         hasContent = true;
                                         try {
@@ -209,22 +209,19 @@ document.addEventListener('DOMContentLoaded', function() {
                                                 addDebugMessage('Card data:', cardData);
                                             }
                                             
-                                            // Find the "Top Result" field
-                                            const topResult = cardData.fields.find(field => field.fieldLabel === 'Top Result:');
-                                            if (topResult) {
-                                                addMessage(topResult.fieldValue, 'bot-message');
-                                                if (isDebug) {
-                                                    addDebugMessage('Added top result message:', topResult.fieldValue);
-                                                }
-                                            }
-                                            
-                                            // Add link if present
-                                            const linkField = cardData.fields.find(field => field.fieldLabel.includes('KB'));
-                                            if (linkField) {
-                                                const linkMessage = `Learn more: ${linkField.fieldValue}`;
-                                                addMessage(linkMessage, 'bot-message link-message');
-                                                if (isDebug) {
-                                                    addDebugMessage('Added link message:', linkMessage);
+                                            // Process each field
+                                            for (const field of cardData.fields) {
+                                                if (field.fieldLabel === 'Top Result:') {
+                                                    addMessage(field.fieldValue, 'bot-message');
+                                                    if (isDebug) {
+                                                        addDebugMessage('Added top result message:', field.fieldValue);
+                                                    }
+                                                } else if (field.fieldLabel.includes('KB')) {
+                                                    const linkMessage = `Learn more: ${field.fieldValue}`;
+                                                    addMessage(linkMessage, 'bot-message link-message');
+                                                    if (isDebug) {
+                                                        addDebugMessage('Added link message:', linkMessage);
+                                                    }
                                                 }
                                             }
                                         } catch (e) {
@@ -237,14 +234,13 @@ document.addEventListener('DOMContentLoaded', function() {
                                         }
                                     } else if (item.uiType === 'Picker') {
                                         hasContent = true;
-                                        // Add picker options as a message
                                         const pickerMessage = `${item.label}\n${item.options.map(opt => `- ${opt.label}`).join('\n')}`;
                                         addMessage(pickerMessage, 'bot-message picker-message');
                                         if (isDebug) {
                                             addDebugMessage('Added picker message:', pickerMessage);
                                         }
                                     }
-                                });
+                                }
                                 
                                 if (hasContent) {
                                     // Acknowledge the messages
@@ -277,33 +273,16 @@ document.addEventListener('DOMContentLoaded', function() {
                                     if (isDebug) {
                                         addDebugMessage('Polling completed successfully');
                                     }
-                                } else if (isDebug) {
-                                    addDebugMessage('No content messages in response');
+                                    return;
                                 }
-                            } else if (isDebug) {
-                                addDebugMessage('No messages in response body');
                             }
-                            
-                            attempts++;
-                        } catch (error) {
-                            console.error('Polling error:', error);
+                        } catch (e) {
+                            console.error('Error during polling:', e);
                             if (isDebug) {
-                                addDebugMessage('Polling Error:', error);
+                                addDebugMessage('Error during polling:', e);
                             }
-                            clearInterval(pollInterval);
-                            addMessage('Error: Failed to get response', 'bot-message error-message');
                         }
-                    }, 1000); // Poll every second
-                } else {
-                    addMessage('Error: Invalid response format', 'bot-message error-message');
-                    if (isDebug) {
-                        addDebugMessage('Invalid response format:', data);
-                    }
-                }
-            } else {
-                // Handle GPT response
-                if (data.response) {
-                    addMessage(data.response, 'bot-message');
+                    }, 1000);
                 }
             }
         } catch (error) {
@@ -347,77 +326,46 @@ document.addEventListener('DOMContentLoaded', function() {
         scrollToBottom();
     }
 
-    function addMessage(response, className) {
-        console.log('Adding message:', { response, className });
-        
-        // Skip StartConversation action messages
-        if (typeof response === 'string') {
-            try {
-                const parsed = JSON.parse(response);
-                if (parsed.uiType === 'ActionMsg' && parsed.actionType === 'StartConversation') {
-                    console.log('Skipping StartConversation message');
-                    return;
-                }
-            } catch (e) {
-                // Not JSON, continue with normal message handling
-            }
+    function addMessage(content, className) {
+        if (!content) {
+            console.error('Empty message content');
+            return;
         }
-      
-        // Create the message container
+
+        if (isDebug) {
+            addDebugMessage('Adding message:', { content, className });
+        }
+
         const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${className}`;
-        console.log('Created message div with class:', messageDiv.className);
-      
-        // If it's a bot message, add an icon
-        if (className === 'bot-message') {
-          messageDiv.setAttribute('data-source', apiToggle.checked ? 'servicenow' : 'gpt');
-          const iconDiv = document.createElement('div');
-          iconDiv.className = 'message-icon';
-          iconDiv.innerHTML = apiToggle.checked
-            ? `<img src="/static/servicenow-icon.png" width="24" height="24" alt="ServiceNow">`
-            : `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>`;
-          messageDiv.appendChild(iconDiv);
-        }
-      
-        // Create the message content
+        messageDiv.className = className;
+
+        // Create message content
         const messageContent = document.createElement('div');
         messageContent.className = 'message-content';
         
-        // Handle the response based on its type
-        if (typeof response === 'string') {
-            const paragraph = document.createElement('p');
-            paragraph.textContent = response;
-            messageContent.appendChild(paragraph);
-        } else if (response?.servicenow_response?.body) {
-            // Handle ServiceNow response structure
-            const bodyItems = response.servicenow_response.body;
-            console.log('Processing ServiceNow body items:', bodyItems);
-            
-            bodyItems.forEach(item => {
-                if (item.uiType === 'OutputText' && item.value) {
-                    const paragraph = document.createElement('p');
-                    paragraph.textContent = item.value;
-                    messageContent.appendChild(paragraph);
-                }
-            });
-        }
-      
-        messageDiv.appendChild(messageContent);
-        console.log('Appending message to chat container:', messageDiv);
-        
-        const chatMessages = document.getElementById('chatMessages');
-        if (chatMessages) {
-            chatMessages.appendChild(messageDiv);
-            console.log('Message appended successfully');
+        if (className.includes('link-message')) {
+            // Make link messages clickable
+            const link = document.createElement('a');
+            link.href = content.replace('Learn more: ', '');
+            link.target = '_blank';
+            link.textContent = content;
+            messageContent.appendChild(link);
+        } else if (className.includes('picker-message')) {
+            // Format picker messages with proper line breaks
+            messageContent.style.whiteSpace = 'pre-line';
+            messageContent.textContent = content;
         } else {
-            console.error('Chat messages container not found!');
+            // Regular message
+            messageContent.textContent = content;
         }
-        
+
+        messageDiv.appendChild(messageContent);
+        chatMessages.appendChild(messageDiv);
         scrollToBottom();
+
+        if (isDebug) {
+            addDebugMessage('Message added successfully');
+        }
     }
 
     function scrollToBottom() {

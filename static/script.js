@@ -148,7 +148,15 @@ document.addEventListener('DOMContentLoaded', function() {
                                 addDebugMessage(`Polling attempt ${attempts + 1}/${maxAttempts} for request ${requestId}`);
                             }
 
-                            const pollResponse = await fetch(`/servicenow/responses/${requestId}`, {
+                            // Get the current URL's origin
+                            const origin = window.location.origin;
+                            const pollUrl = `${origin}/servicenow/responses/${requestId}`;
+                            
+                            if (isDebug) {
+                                addDebugMessage('Polling URL:', pollUrl);
+                            }
+
+                            const pollResponse = await fetch(pollUrl, {
                                 method: 'GET',
                                 headers: {
                                     'Content-Type': 'application/json',
@@ -156,7 +164,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             });
                             
                             if (!pollResponse.ok) {
-                                throw new Error(`Poll failed: ${pollResponse.statusText}`);
+                                throw new Error(`Poll failed: ${pollResponse.status} ${pollResponse.statusText}`);
                             }
                             
                             const pollData = await pollResponse.json();

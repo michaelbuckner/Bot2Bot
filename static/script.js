@@ -96,17 +96,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 use_servicenow: useServiceNow
             };
 
+            // Get the current URL's origin
+            const origin = window.location.origin;
+            const chatUrl = `${origin}/chat`;
+
             // If debug mode is on, show the request payload
             if (isDebug) {
                 addDebugMessage('Request Payload:', requestPayload);
+                addDebugMessage('Chat URL:', chatUrl);
             }
 
-            // IMPORTANT: Make sure this URL is correct for your FastAPI server/port
-            const response = await fetch('https://bot2bot.sliplane.app/chat', {
+            // Make the request to the chat endpoint
+            const response = await fetch(chatUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
+                credentials: 'include',  // Include cookies for authentication
                 body: JSON.stringify(requestPayload)
             });
 

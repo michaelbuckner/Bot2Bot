@@ -1,24 +1,22 @@
-import os
-from typing import Dict
-import requests
-from dotenv import load_dotenv
-from openai import OpenAI
 from fastapi import FastAPI, HTTPException, Request, Response, Depends, Cookie, Header, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials, OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field
 import time
 import json
+import os
+import requests
 import logging
-from jose import jwt
-from jose.exceptions import JWTError
-from datetime import datetime, timedelta
+from openai import OpenAI
 import uuid
 from typing import Optional
 import random
-from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+import hmac
+import hashlib
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -29,18 +27,6 @@ logger.addHandler(handler)
 
 # Load environment variables
 load_dotenv()
-
-# JWT Settings
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here")  # Change in production
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-
-def create_access_token(data: dict):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
 
 app = FastAPI()
 app.add_middleware(

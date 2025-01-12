@@ -162,31 +162,35 @@ document.addEventListener('DOMContentLoaded', function() {
                             
                             if (pollData.servicenow_response && pollData.servicenow_response.body) {
                                 const messages = pollData.servicenow_response.body;
-                                if (messages.length > 0) {
-                                    messages.forEach(item => {
-                                        if (item.uiType === 'OutputCard') {
-                                            try {
-                                                const cardData = JSON.parse(item.data);
-                                                cardData.fields.forEach(field => {
-                                                    if (field.fieldLabel === 'Top Result:') {
-                                                        addMessage(field.fieldValue, 'bot-message');
-                                                    }
-                                                });
-                                            } catch (e) {
-                                                console.error('Failed to parse card data:', e);
-                                                addMessage(JSON.stringify(item), 'bot-message');
-                                            }
-                                        } else if (item.uiType === 'Picker') {
-                                            // Handle picker if needed
-                                            console.log('Picker received:', item);
-                                        } else if (item.uiType === 'ActionMsg') {
-                                            if (item.actionType === 'System') {
-                                                addMessage(item.message, 'bot-message system-message');
-                                            }
+                                let hasContent = false;
+                                
+                                messages.forEach(item => {
+                                    if (item.uiType === 'OutputCard') {
+                                        hasContent = true;
+                                        try {
+                                            const cardData = JSON.parse(item.data);
+                                            cardData.fields.forEach(field => {
+                                                if (field.fieldLabel === 'Top Result:') {
+                                                    addMessage(field.fieldValue, 'bot-message');
+                                                }
+                                            });
+                                        } catch (e) {
+                                            console.error('Failed to parse card data:', e);
+                                            addMessage(JSON.stringify(item), 'bot-message');
                                         }
-                                    });
-                                    
-                                    // Clear interval after receiving responses
+                                    } else if (item.uiType === 'Picker') {
+                                        hasContent = true;
+                                        // Handle picker if needed
+                                        console.log('Picker received:', item);
+                                    } else if (item.uiType === 'ActionMsg') {
+                                        if (item.actionType === 'System') {
+                                            addMessage(item.message, 'bot-message system-message');
+                                        }
+                                    }
+                                });
+                                
+                                // Only stop polling if we got content messages
+                                if (hasContent) {
                                     clearInterval(pollInterval);
                                 }
                             }

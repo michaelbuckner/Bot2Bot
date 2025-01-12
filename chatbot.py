@@ -144,7 +144,7 @@ class ServiceNowAPI:
 
             payload = json.dumps({
                 "requestId": request_id,
-                "clientSessionId": session_id,
+                "clientSessionId": session_id[:6] if session_id else "",
                 "nowSessionId": "",
                 "message": {
                     "text": message,
@@ -398,6 +398,7 @@ async def servicenow_callback(
 @app.get("/servicenow/responses/{request_id}")
 async def get_servicenow_responses(request_id: str):
     """Get responses for a specific request ID."""
+    
     logger.info("Getting responses for request %s", request_id)
     
     if request_id not in pending_responses:
@@ -412,8 +413,12 @@ async def get_servicenow_responses(request_id: str):
     # Get the responses
     responses = pending_responses[request_id]
     
-    # Remove from pending after retrieving
-    del pending_responses[request_id]
+    # Only remove from pending_responses if we have content messages
+    has_content = any(msg.get("uiType") in ["OutputCard", "Picker"] for msg in responses)
+    if has_content:
+        # Remove from pending after retrieving content
+        del pending_responses[request_id]
+        logger.info("Removed request %s from pending_responses after content delivery", request_id)
     
     logger.info("Returning responses for request %s: %s", 
                request_id, json.dumps(responses, indent=2))

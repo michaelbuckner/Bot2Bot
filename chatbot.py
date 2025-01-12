@@ -133,8 +133,126 @@ class ServiceNowAPI:
             raise ValueError("Failed to generate signature.")
 
     def send_message_to_va(self, message, session_id):
-        # Logic implementation
-        pass
+        try:
+            request_id = str(uuid.uuid4())
+            client_message_id = f"MSG-{uuid.uuid4().hex[:6]}"
+
+            payload = json.dumps({
+                "requestId": request_id,
+                "clientSessionId": session_id,
+                "nowSessionId": "",
+                "message": {
+                    "text": message,
+                    "typed": "true",
+                    "clientMessageId": client_message_id
+                },
+                "userId": "beth.anglin"
+            })
+
+            signature = self.generate_signature(payload)
+            headers = {
+                'Content-Type': 'application/json',
+                'x-b2b-signature': signature
+            }
+
+            logger.info("Sending request to ServiceNow with payload: %s", payload)
+            response = requests.post(
+                f"https://{self.instance_url}/api/sn_va_as_service/bot/integration",
+                headers=headers,
+                auth=self.auth,
+                data=payload
+            )
+
+            logger.info("ServiceNow Response Status: %s", response.status_code)
+            logger.info("ServiceNow Raw Response Content: %s", response.text)
+
+            response.raise_for_status()
+            response_data = response.json()
+
+            # Ensure response_data is a dict with "body" as a list
+            if not isinstance(response_data, dict):
+                response_data = {
+                    "requestId": request_id,
+                    "body": [{
+                        "uiType": "OutputText",
+                        "value": str(response_data)
+                    }]
+                }
+            elif "body" not in response_data:
+                logger.warning("Response missing 'body' field, adding it")
+                response_data["body"] = [{
+                    "uiType": "OutputText",
+                    "value": json.dumps(response_data)
+                }]
+            elif not isinstance(response_data["body"], list):
+                response_data["body"] = [{
+                    "uiType": "OutputText",
+                    "value": str(response_data["body"])
+                }]
+
+            return response_data
+
+        except requests.exceptions.RequestException as e:
+            logger.error("Error sending message to ServiceNow VA: %s", str(e))
+            if hasattr(e.response, 'text'):
+                logger.error("Error response content: %s", e.response.text)
+            return {
+                "requestId": None,
+                "body": [{
+                    "uiType": "OutputText",
+                    "value": f"Error communicating with ServiceNow: {str(e)}"
+                }]
+            }
+        except Exception as e:
+            logger.error("Unexpected error: %s", str(e))
+            return {
+                "requestId": None,
+                "body": [{
+                    "uiType": "OutputText",
+                    "value": f"Unexpected error: {str(e)}"
+                }]
+            }
+
+servicenow_api = ServiceNowAPI(
+    instance_url=os.getenv('SERVICENOW_INSTANCE'),
+    username=os.getenv('SERVICENOW_USERNAME'),
+    password=os.getenv('SERVICENOW_PASSWORD'),
+    token=os.getenv('SERVICENOW_TOKEN')
+)
+
+def get_gpt_response(message: str) -> str:
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": message}
+            ]
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"GPT API error: {str(e)}")
+
+@app.post("/chat")
+async def chat(chat_message: ChatMessage, user: Optional[User] = Depends(get_current_user)):
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        if chat_message.use_servicenow:
+            response = servicenow_api.send_message_to_va(chat_message.message, chat_message.session_id)
+            return {
+                "servicenow_response": {
+                    "body": response.get("body", []),
+                    "requestId": response.get("requestId")
+                }
+            }
+        else:
+            gpt_response = get_gpt_response(chat_message.message)
+            return {"response": gpt_response}
+    except Exception as e:
+        logger.error("Error in chat endpoint: %s", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 class ServiceNowCallback(BaseModel):
     requestId: str | None = None
@@ -173,8 +291,17 @@ async def servicenow_callback(
     credentials: HTTPBasicCredentials = Depends(security)
 ):
     verify_callback_credentials(credentials)
-    # Further processing logic here
-    pass
+    body = await request.json()
+    logger.info("Received callback from ServiceNow: %s", json.dumps(body, indent=2))
+
+    try:
+        callback = ServiceNowCallback(**body)
+        if callback.requestId:
+            pending_responses[callback.requestId] = callback.body or []
+        return {"status": "success"}
+    except Exception as e:
+        logger.error("Error processing ServiceNow callback: %s", str(e), exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Error processing callback: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

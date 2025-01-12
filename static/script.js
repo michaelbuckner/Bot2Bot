@@ -135,7 +135,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Start polling for responses
                     let attempts = 0;
-                    const maxAttempts = 30; // Increase max attempts
+                    const maxAttempts = 30; // 30 seconds timeout
                     const pollInterval = setInterval(async () => {
                         try {
                             if (attempts >= maxAttempts) {
@@ -145,10 +145,10 @@ document.addEventListener('DOMContentLoaded', function() {
                             }
                             
                             if (isDebug) {
-                                addDebugMessage('Polling attempt:', attempts);
+                                addDebugMessage(`Polling attempt ${attempts + 1}/${maxAttempts} for request ${requestId}`);
                             }
 
-                            const pollResponse = await fetch(`https://bot2bot.sliplane.app/servicenow/responses/${requestId}`, {
+                            const pollResponse = await fetch(`/servicenow/responses/${requestId}`, {
                                 method: 'GET',
                                 headers: {
                                     'Content-Type': 'application/json',
@@ -196,6 +196,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                 
                                 if (hasContent) {
                                     clearInterval(pollInterval);
+                                    if (isDebug) {
+                                        addDebugMessage('Polling completed successfully');
+                                    }
                                 }
                             }
                             

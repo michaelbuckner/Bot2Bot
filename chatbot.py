@@ -171,7 +171,7 @@ class ServiceNowAPI:
             response_data = response.json()
 
             # If the top-level is a list, capture the conversationId and remove StartConversation items
-            conversation_id = None
+            requestId = None
             if isinstance(response_data, list):
                 filtered_response = []
                 for item in response_data:
@@ -180,28 +180,28 @@ class ServiceNowAPI:
                             parsed_value = json.loads(item.get("value", "{}"))
                             if (parsed_value.get("uiType") == "ActionMsg"
                                 and parsed_value.get("actionType") == "StartConversation"):
-                                conversation_id = parsed_value.get("conversationId")
+                                requestId = parsed_value.get("requestId")
                                 continue  # skip adding this item to filtered_response
                         except (ValueError, TypeError, json.JSONDecodeError):
                             pass
                     filtered_response.append(item)
 
                 # Store filtered items under "body"
-                # and keep the conversationId for reference in the final output
+                # and keep the requestId for reference in the final output
                 response_data = {
-                    "conversationId": conversation_id,
+                    "requestId": requestId,
                     "body": filtered_response
                 }
 
             # Log details
-            logger.info("Captured conversationId: %s", conversation_id)
+            logger.info("Captured requestId: %s", requestId)
             logger.info("ServiceNow Response Type: %s", type(response_data))
 
             # Ensure response_data is a dict with "body" as a list
             if not isinstance(response_data, dict):
                 logger.warning("Response is not a dictionary, wrapping it")
                 response_data = {
-                    "conversationId": conversation_id,
+                    "requestId": requestId,
                     "body": [{
                         "uiType": "OutputText",
                         "value": str(response_data)
@@ -257,7 +257,7 @@ class ServiceNowAPI:
             if hasattr(e.response, 'text'):
                 logger.error("Error response content: %s", e.response.text)
             return {
-                "conversationId": None,
+                "requestId": None,
                 "body": [{
                     "uiType": "OutputText",
                     "value": f"Error communicating with ServiceNow: {str(e)}"
@@ -266,7 +266,7 @@ class ServiceNowAPI:
         except json.JSONDecodeError as e:
             logger.error("JSON decode error: %s", str(e))
             return {
-                "conversationId": None,
+                "requestId": None,
                 "body": [{
                     "uiType": "OutputText",
                     "value": f"Invalid JSON response from ServiceNow: {str(e)}"
@@ -275,7 +275,7 @@ class ServiceNowAPI:
         except Exception as e:
             logger.error("Unexpected error: %s", str(e))
             return {
-                "conversationId": None,
+                "requestId": None,
                 "body": [{
                     "uiType": "OutputText",
                     "value": f"Unexpected error: {str(e)}"
@@ -283,8 +283,10 @@ class ServiceNowAPI:
             }
 
 class ServiceNowCallback(BaseModel):
-    conversationId: str | None = None
+    requestId: str | None = None
     body: list | dict | None = None
+    clientSessionId: str | None = None
+    message: dict | None = None
 
     # Allow additional fields
     class Config:
@@ -329,16 +331,26 @@ async def servicenow_callback(
         # Parse the callback data
         callback = ServiceNowCallback(**body)
         
-        # Store the response in pending_responses if we have a conversation ID
-        if callback.conversationId:
+        # Store the response in pending_responses if we have a request ID
+        if callback.requestId:
             if isinstance(callback.body, (list, dict)):
-                pending_responses[callback.conversationId] = callback.body
-                logger.info("Stored response for conversation %s", callback.conversationId)
+                # Only store responses that contain actual content (not just spinner actions)
+                content_responses = [
+                    item for item in callback.body 
+                    if isinstance(item, dict) and 
+                    item.get('uiType') not in ['ActionMsg']
+                ]
+                
+                if content_responses:
+                    pending_responses[callback.requestId] = content_responses
+                    logger.info("Stored response for request %s", callback.requestId)
+                else:
+                    logger.debug("Skipping spinner message for request %s", callback.requestId)
             else:
-                logger.warning("Received invalid body format for conversation %s: %s", 
-                             callback.conversationId, callback.body)
+                logger.warning("Received invalid body format for request %s: %s", 
+                             callback.requestId, callback.body)
         else:
-            logger.warning("No conversation ID in callback: %s", body)
+            logger.warning("No request ID in callback: %s", body)
             
         return {"status": "success"}
         
@@ -387,14 +399,25 @@ async def chat(chat_message: ChatMessage, user: Optional[User] = Depends(get_cur
                 
                 logger.info("Raw ServiceNow response: %s", json.dumps(response, indent=2))
                 
-                # Generate a request ID if none is provided
-                request_id = response.get("conversationId") or str(uuid.uuid4())
-                logger.info("Using request_id: %s", request_id)
+                # Get the request ID from the response
+                request_id = response.get("requestId")
+                if not request_id:
+                    request_id = str(uuid.uuid4())
+                    logger.warning("No requestId in response, generated: %s", request_id)
+                else:
+                    logger.info("Using requestId from response: %s", request_id)
                 
-                # Store the response body in pending_responses
+                # Store initial response body if it contains content
                 response_body = response.get("body", [])
-                logger.info("Storing response body: %s", json.dumps(response_body, indent=2))
-                pending_responses[request_id] = response_body
+                content_responses = [
+                    item for item in response_body 
+                    if isinstance(item, dict) and 
+                    item.get('uiType') not in ['ActionMsg']
+                ]
+                
+                if content_responses:
+                    pending_responses[request_id] = content_responses
+                    logger.info("Stored initial response body: %s", json.dumps(content_responses, indent=2))
                 
                 # Return immediately with a pending status
                 return AsyncResponse(

@@ -69,35 +69,11 @@ class User(BaseModel):
 # Add session management
 sessions = {}
 
-# Update the get_current_user dependency
-async def get_current_user(
-    session: str = Cookie(None),
-    authorization: str = Header(None)
-) -> Optional[User]:
-    credentials_exception = HTTPException(
-        status_code=401,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    
-    # Try to get token from cookie first, then authorization header
-    token = None
-    if session and session.startswith("Bearer "):
-        token = session[7:]
-    elif authorization and authorization.startswith("Bearer "):
-        token = authorization[7:]
-        
-    if not token:
-        return None
-        
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            return None
-        return User(username=username)
-    except JWTError:
-        return None
+def get_current_user(request: Request) -> Optional[User]:
+    session_id = request.cookies.get("session_id")
+    if session_id and session_id in sessions:
+        return sessions[session_id]
+    return None
 
 # Update the root route to check for authentication
 @app.get("/", response_class=HTMLResponse)
@@ -125,14 +101,15 @@ async def login(login_request: LoginRequest):
     if (login_request.username in users and 
         users[login_request.username]["password"] == login_request.password):
         
-        access_token = create_access_token({"sub": login_request.username})
+        session_id = str(uuid.uuid4())
+        sessions[session_id] = User(username=login_request.username)
         
         response = JSONResponse(
-            content={"access_token": access_token, "token_type": "bearer"}
+            content={"message": "Login successful"}
         )
         response.set_cookie(
-            key="session",
-            value=f"Bearer {access_token}",
+            key="session_id",
+            value=session_id,
             httponly=True,
             secure=False,  # Set to True in production
             samesite='lax',
@@ -142,11 +119,10 @@ async def login(login_request: LoginRequest):
     
     raise HTTPException(status_code=401, detail="Invalid username or password")
 
-# Add logout endpoint
 @app.post("/logout")
 async def logout(response: Response):
     response = RedirectResponse(url="/login")
-    response.delete_cookie(key="session")
+    response.delete_cookie(key="session_id")
     return response
 
 class ChatMessage(BaseModel):
@@ -395,6 +371,7 @@ async def servicenow_callback(
 @app.get("/servicenow/responses/{request_id}")
 async def get_servicenow_responses(
     request_id: str,
+    request: Request,
     user: Optional[User] = Depends(get_current_user)
 ):
     """Get responses for a specific request ID."""

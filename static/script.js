@@ -176,20 +176,20 @@ document.addEventListener('DOMContentLoaded', function() {
                                             });
                                         } catch (e) {
                                             console.error('Failed to parse card data:', e);
-                                            addMessage(JSON.stringify(item), 'bot-message');
+                                            if (isDebug) {
+                                                addDebugMessage('Failed to parse card data:', e);
+                                                addDebugMessage('Raw card data:', item.data);
+                                            }
+                                            addMessage('Error: Failed to parse response', 'bot-message error-message');
                                         }
                                     } else if (item.uiType === 'Picker') {
                                         hasContent = true;
-                                        // Handle picker if needed
-                                        console.log('Picker received:', item);
-                                    } else if (item.uiType === 'ActionMsg') {
-                                        if (item.actionType === 'System') {
-                                            addMessage(item.message, 'bot-message system-message');
-                                        }
+                                        // Add picker options as a message
+                                        const pickerMessage = `${item.label}\n${item.options.map(opt => `- ${opt.label}`).join('\n')}`;
+                                        addMessage(pickerMessage, 'bot-message picker-message');
                                     }
                                 });
                                 
-                                // Only stop polling if we got content messages
                                 if (hasContent) {
                                     clearInterval(pollInterval);
                                 }

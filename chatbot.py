@@ -371,20 +371,21 @@ async def get_servicenow_responses(request_id: str):
     # Get the responses
     responses = pending_responses[request_id]
     
+    # Filter out spinner messages
+    content_messages = [msg for msg in responses if msg.get("uiType") in ["OutputCard", "Picker"]]
+    
     # Only remove from pending_responses if we have content messages
-    has_content = any(msg.get("uiType") in ["OutputCard", "Picker"] for msg in responses)
-    if has_content:
-        # Remove from pending after retrieving content
+    if content_messages:
         del pending_responses[request_id]
         logger.info("Removed request %s from pending_responses after content delivery", request_id)
     
     logger.info("Returning responses for request %s: %s", 
-               request_id, json.dumps(responses, indent=2))
+               request_id, json.dumps(content_messages, indent=2))
     
     return {
         "servicenow_response": {
             "status": "success",
-            "body": responses
+            "body": content_messages
         }
     }
 

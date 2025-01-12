@@ -20,7 +20,11 @@ from typing import Optional
 
 # Set up logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 # Load environment variables
 load_dotenv()
@@ -291,8 +295,19 @@ async def servicenow_callback(
     credentials: HTTPBasicCredentials = Depends(security)
 ):
     verify_callback_credentials(credentials)
-    body = await request.json()
-    logger.info("Received callback from ServiceNow: %s", json.dumps(body, indent=2))
+    
+    # Get raw request body
+    raw_body = await request.body()
+    logger.info("Raw callback body: %s", raw_body.decode())
+    
+    # Parse JSON
+    try:
+        body = json.loads(raw_body)
+    except json.JSONDecodeError as e:
+        logger.error("Failed to parse callback JSON: %s", str(e))
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+        
+    logger.info("Parsed callback data: %s", json.dumps(body, indent=2))
 
     try:
         callback = ServiceNowCallback(**body)
@@ -313,15 +328,18 @@ async def servicenow_callback(
                 content_messages = []
                 for msg in callback.body:
                     if isinstance(msg, dict):
+                        logger.debug("Processing message: %s", json.dumps(msg, indent=2))
                         if msg.get('uiType') == 'OutputText':
                             try:
                                 # Try to parse the value as JSON
-                                parsed = json.loads(msg.get('value', '{}'))
+                                value = msg.get('value', '{}')
+                                logger.debug("Attempting to parse value: %s", value)
+                                parsed = json.loads(value)
                                 if parsed.get('uiType') == 'ActionMsg' and parsed.get('actionType') == 'StartConversation':
                                     logger.debug("Skipping StartConversation message")
                                     continue
-                            except (json.JSONDecodeError, AttributeError):
-                                pass
+                            except (json.JSONDecodeError, AttributeError) as e:
+                                logger.debug("Failed to parse value as JSON: %s", str(e))
                         content_messages.append(msg)
 
                 if content_messages:
@@ -383,6 +401,19 @@ async def get_servicenow_responses(
             "body": responses,
             "requestId": request_id
         }
+    }
+
+@app.get("/debug/pending_responses")
+async def debug_pending_responses(
+    user: Optional[User] = Depends(get_current_user)
+):
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    logger.info("Current pending_responses: %s", json.dumps(pending_responses, indent=2))
+    return {
+        "pending_responses": pending_responses,
+        "count": len(pending_responses)
     }
 
 if __name__ == "__main__":

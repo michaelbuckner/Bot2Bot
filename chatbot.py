@@ -146,8 +146,7 @@ class ServiceNowAPI:
                     "typed": "true",
                     "clientMessageId": client_message_id
                 },
-                "userId": "beth.anglin",
-                "callbackUrl": f"{os.getenv('BASE_URL')}/servicenow/callback"
+                "userId": "beth.anglin"
             })
 
             signature = self.generate_signature(payload)

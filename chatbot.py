@@ -356,9 +356,17 @@ async def chat(chat_message: ChatMessage, user: Optional[User] = Depends(get_cur
                 chat_message.message, 
                 chat_message.session_id
             )
+            
+            # Get the conversation_id from the response
+            conversation_id = response.get("conversationId")
+            
+            # Store the response body in pending_responses
+            if conversation_id:
+                pending_responses[conversation_id] = response.get("body", [])
+            
             # Return immediately with a pending status
             return AsyncResponse(
-                request_id=response.get("requestId"),
+                request_id=conversation_id,  # Use conversation_id as the request_id
                 status="pending",
                 message="Request is being processed"
             )

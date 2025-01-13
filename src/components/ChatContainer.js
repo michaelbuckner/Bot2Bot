@@ -144,13 +144,22 @@ const ChatContainer = () => {
                 let hasSpinner = false;
 
                 for (const msg of messages) {
+                  if (isDebug) {
+                    addDebugMessage('Processing message:', msg);
+                  }
+
                   if (msg.uiType === 'ActionMsg') {
-                    // Handle spinner messages
                     hasSpinner = true;
                     if (msg.actionType === 'StartSpinner') {
                       setIsLoading(true);
+                      if (isDebug) {
+                        addDebugMessage('Started spinner');
+                      }
                     } else if (msg.actionType === 'EndSpinner') {
                       setIsLoading(false);
+                      if (isDebug) {
+                        addDebugMessage('Ended spinner');
+                      }
                     }
                   } else if (msg.uiType === 'OutputCard') {
                     try {

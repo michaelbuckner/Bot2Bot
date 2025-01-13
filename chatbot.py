@@ -288,56 +288,43 @@ def verify_callback_credentials(credentials: HTTPBasicCredentials):
 pending_responses = {}
 
 @app.post("/servicenow/callback")
-async def servicenow_callback(
-    request: Request,
-    credentials: HTTPBasicCredentials = Depends(security)
-):
+async def servicenow_callback(request: Request, credentials: HTTPBasicCredentials = Depends(security)):
     """Handle callbacks from ServiceNow."""
-    logger.info("=== ServiceNow Callback Received ===")
-    logger.info("Headers: %s", dict(request.headers))
-    
-    logger.info("Attempting to verify credentials: %s", credentials.username)
-    verify_callback_credentials(credentials)
-    logger.info("Credentials verified successfully")
-    
-    # Get raw request body
-    raw_body = await request.body()
-    logger.info("Raw callback body: %s", raw_body.decode())
-    
-    # Parse JSON
     try:
-        body = json.loads(raw_body)
-    except json.JSONDecodeError as e:
-        logger.error("Failed to parse callback JSON: %s", str(e))
-        raise HTTPException(status_code=400, detail="Invalid JSON")
-
-    try:
-        callback = ServiceNowCallback(**body)
+        logger.info("=== ServiceNow Callback Received ===")
+        logger.info("Headers: %s", request.headers)
         
-        # Extract request ID from the callback
+        # Verify credentials
+        logger.info("Attempting to verify credentials: %s", credentials.username)
+        verify_callback_credentials(credentials)
+        logger.info("Credentials verified successfully")
+        
+        # Get the callback data
+        callback_data = await request.json()
+        logger.info("Raw callback body: %s", json.dumps(callback_data))
+        
+        # Parse the callback data
+        callback = ServiceNowCallback(**callback_data)
         request_id = callback.requestId
+        
         if not request_id:
-            logger.warning("No requestId in callback")
-            return {"status": "error", "message": "No requestId in callback"}
-
+            raise HTTPException(status_code=400, detail="Missing requestId")
+        
         logger.info("Processing callback for requestId: %s", request_id)
         
-        # Process the callback body
+        # Store the response
+        if request_id not in pending_responses:
+            pending_responses[request_id] = []
+            
+        # Add the new messages to the list
         if callback.body:
             if isinstance(callback.body, list):
-                # Store all messages, including spinners
-                if request_id in pending_responses:
-                    pending_responses[request_id].extend(callback.body)
-                else:
-                    pending_responses[request_id] = callback.body
-                    
-                logger.info("Updated messages for request %s: %s", 
-                          request_id, json.dumps(pending_responses[request_id], indent=2))
+                pending_responses[request_id].extend(callback.body)
             else:
-                # If body is not a list, wrap it in a list
-                logger.warning("Callback body is not a list, wrapping it: %s", callback.body)
-                pending_responses[request_id] = [callback.body]
+                pending_responses[request_id].append(callback.body)
                 
+        logger.info("Updated messages for request %s: %s", request_id, json.dumps(pending_responses[request_id], indent=2))
+        
         return {"status": "success"}
     except Exception as e:
         logger.error("Error processing ServiceNow callback: %s", str(e), exc_info=True)
@@ -353,7 +340,10 @@ async def get_servicenow_responses(
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
+    logger.info("Getting responses for request %s (acknowledge=%s)", request_id, acknowledge)
+    
     if request_id not in pending_responses:
+        logger.info("No pending responses for request %s", request_id)
         return {
             "servicenow_response": {
                 "status": "success",
@@ -363,6 +353,7 @@ async def get_servicenow_responses(
     
     # Get the responses
     responses = pending_responses[request_id]
+    logger.info("Found %d responses for request %s", len(responses), request_id)
     
     # If acknowledging, remove from pending responses
     if acknowledge:

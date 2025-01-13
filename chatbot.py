@@ -422,19 +422,19 @@ async def get_servicenow_responses(
         elif msg.get('uiType') in ['OutputCard', 'Picker', 'OutputText']:
             content_messages.append(msg)
 
+    logger.info("Filtered response messages: %s", json.dumps(content_messages, indent=2))
+    
     # Only remove from pending_responses if explicitly acknowledged
     if acknowledge and content_messages:
         del pending_responses[request_id]
         logger.info("Removed request %s from pending_responses after acknowledgment", request_id)
         logger.info("Remaining request IDs: %s", list(pending_responses.keys()))
     
-    logger.info("Returning responses for request %s: %s", 
-               request_id, json.dumps(content_messages, indent=2))
-    
     return {
-        "status": "success",
-        "messages": content_messages,
-        "done": acknowledge
+        "servicenow_response": {
+            "status": "success",
+            "body": content_messages
+        }
     }
 
 @app.get("/debug/pending_responses")

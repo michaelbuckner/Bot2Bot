@@ -129,36 +129,68 @@ const ChatContainer = () => {
 
               const pollData = await pollResponse.json();
               
-              if (pollData.messages && pollData.messages.length > 0) {
-                pollData.messages.forEach(msg => {
-                  if (msg.uiType === 'OutputCard') {
-                    try {
-                      const cardData = JSON.parse(msg.data);
-                      // Extract and display the main content from the card
-                      const content = cardData.fields?.find(f => f.fieldLabel === 'Top Result:')?.fieldValue || 
-                                    JSON.stringify(cardData);
-                      addMessage(content, 'bot-message');
-                    } catch (e) {
-                      console.error('Error parsing card data:', e);
-                      addMessage(JSON.stringify(msg), 'bot-message');
-                    }
-                  } else if (msg.uiType === 'OutputText') {
-                    addMessage(msg.value || msg.text, 'bot-message');
-                  } else if (msg.uiType === 'Picker') {
-                    // Add picker options as a system message
-                    addMessage(msg.label, 'bot-message system-message');
-                    msg.options.forEach(option => {
-                      addMessage(`- ${option.label}`, 'bot-message system-message');
-                    });
-                  }
-                });
+              if (isDebug) {
+                addDebugMessage('Poll response:', pollData);
               }
-
-              if (pollData.done) {
-                setIsPolling(false);
-                clearInterval(pollInterval);
-                if (isDebug) {
-                  addDebugMessage('Polling complete');
+              
+              if (pollData.servicenow_response && pollData.servicenow_response.body) {
+                const messages = pollData.servicenow_response.body;
+                if (messages && messages.length > 0) {
+                  messages.forEach(msg => {
+                    if (msg.uiType === 'OutputCard') {
+                      try {
+                        const cardData = JSON.parse(msg.data);
+                        if (isDebug) {
+                          addDebugMessage('Parsed card data:', cardData);
+                        }
+                        // Extract and display the main content from the card
+                        const content = cardData.fields?.find(f => f.fieldLabel === 'Top Result:')?.fieldValue || 
+                                      JSON.stringify(cardData);
+                        addMessage(content, 'bot-message');
+                      } catch (e) {
+                        console.error('Error parsing card data:', e);
+                        if (isDebug) {
+                          addDebugMessage('Error parsing card:', e.message);
+                        }
+                        addMessage(JSON.stringify(msg), 'bot-message');
+                      }
+                    } else if (msg.uiType === 'OutputText') {
+                      addMessage(msg.value || msg.text, 'bot-message');
+                    } else if (msg.uiType === 'Picker') {
+                      // Add picker options as a system message
+                      addMessage(msg.label, 'bot-message system-message');
+                      msg.options.forEach(option => {
+                        addMessage(`- ${option.label}`, 'bot-message system-message');
+                      });
+                    }
+                  });
+                  
+                  // After successfully processing messages, acknowledge them
+                  try {
+                    const ackUrl = `${pollUrl}?acknowledge=true`;
+                    if (isDebug) {
+                      addDebugMessage('Acknowledging messages:', ackUrl);
+                    }
+                    await fetch(ackUrl, {
+                      method: 'GET',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      credentials: 'include'
+                    });
+                    if (isDebug) {
+                      addDebugMessage('Messages acknowledged successfully');
+                    }
+                  } catch (e) {
+                    if (isDebug) {
+                      addDebugMessage('Error acknowledging messages:', e);
+                    }
+                  }
+                  
+                  clearInterval(pollInterval);
+                  if (isDebug) {
+                    addDebugMessage('Polling complete');
+                  }
                 }
               }
             } catch (error) {

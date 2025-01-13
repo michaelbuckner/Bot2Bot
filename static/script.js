@@ -224,11 +224,14 @@ document.addEventListener('DOMContentLoaded', function() {
                                             // Process each field
                                             for (const field of cardData.fields) {
                                                 if (field.fieldLabel === 'Top Result:') {
-                                                    addMessage(field.fieldValue, 'bot-message');
+                                                    // Remove the "Top Result:" prefix if present
+                                                    const messageText = field.fieldValue.replace(/^Top Result:\s*/i, '');
+                                                    addMessage(messageText, 'bot-message');
                                                     if (isDebug) {
-                                                        addDebugMessage('Added top result message:', field.fieldValue);
+                                                        addDebugMessage('Added top result message:', messageText);
                                                     }
                                                 } else if (field.fieldLabel.includes('KB')) {
+                                                    // Format the link as a clickable button
                                                     const linkMessage = `Learn more: ${field.fieldValue}`;
                                                     addMessage(linkMessage, 'bot-message link-message');
                                                     if (isDebug) {
@@ -246,7 +249,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                         }
                                     } else if (item.uiType === 'Picker') {
                                         hasContent = true;
-                                        const pickerMessage = `${item.label}\n${item.options.map(opt => `- ${opt.label}`).join('\n')}`;
+                                        // Format picker options as a list
+                                        const pickerMessage = `${item.label}\n${item.options.map((opt, i) => `${i + 1}. ${opt.label}`).join('\n')}`;
                                         addMessage(pickerMessage, 'bot-message picker-message');
                                         if (isDebug) {
                                             addDebugMessage('Added picker message:', pickerMessage);

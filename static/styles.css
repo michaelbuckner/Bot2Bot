@@ -178,98 +178,71 @@ body {
     opacity: 0.9;
 }
 
-.user-message {
-    background-color: var(--message-user-bg);
-    color: var(--message-user-text);
-    margin-left: auto;
-    border-bottom-right-radius: 0.25rem;
-    flex-direction: row-reverse;
-}
-
-.bot-message {
-    background-color: var(--bot-message-bg);
-    color: var(--bot-message-text);
-    padding: 12px;
-    border-radius: 8px;
-    margin: 8px 0;
+.message-content {
+    padding: 10px 15px;
+    border-radius: 15px;
     max-width: 80%;
     word-wrap: break-word;
+    margin: 5px 0;
 }
 
-.bot-message .message-icon {
-    color: var(--primary-color);
+.user-message .message-content {
+    background-color: #007bff;
+    color: white;
+    margin-left: auto;
+    margin-right: 10px;
 }
 
-.bot-message[data-source="servicenow"] .message-icon svg {
-    width: 22px;
-    height: 22px;
+.bot-message .message-content {
+    background-color: #f8f9fa;
+    color: #212529;
+    margin-right: auto;
+    margin-left: 10px;
 }
 
-.bot-message[data-source="servicenow"] .message-icon {
-    color: #81B5A1;  /* ServiceNow brand color */
+.link-message .message-content {
+    background-color: #e9ecef;
 }
 
-.user-message .message-icon {
-    color: var(--message-user-text);
+.link-message a {
+    color: #007bff;
+    text-decoration: none;
+    display: inline-block;
+    padding: 5px 0;
 }
 
-.bot-message.system-message {
-    background-color: var(--system-message-bg);
-    color: var(--system-message-text);
-    font-style: italic;
-    font-size: 0.875rem;
-    padding: 0.75rem 1rem;
-    border: 1px solid rgba(0, 0, 0, 0.1);
-    max-width: 100%;
+.link-message a:hover {
+    text-decoration: underline;
 }
 
-.bot-message.system-message .message-icon {
-    opacity: 0.7;
-}
-
-.bot-message.error {
-    background-color: #f8d7da;
-    color: #721c24;
-    border: 1px solid #f5c6cb;
-}
-
-[data-theme="dark"] .bot-message.error {
-    background-color: #442326;
-    color: #ff8c95;
-    border: 1px solid #583337;
-}
-
-.link-message {
-    background-color: var(--link-message-bg);
-    color: var(--link-message-text);
-    cursor: pointer;
-}
-
-.link-message:hover {
-    background-color: var(--link-message-hover-bg);
-}
-
-.picker-message {
-    background-color: var(--picker-message-bg);
-    color: var(--picker-message-text);
+.picker-message .message-content {
     white-space: pre-line;
+    background-color: #e9ecef;
 }
 
-.error-message {
-    background-color: var(--error-message-bg);
-    color: var(--error-message-text);
+.error-message .message-content {
+    background-color: #dc3545;
+    color: white;
 }
 
 .debug-message {
     font-family: monospace;
-    background-color: var(--debug-message-bg);
-    color: var(--debug-message-text);
-    padding: 8px;
-    border-radius: 4px;
-    margin: 4px 0;
-    font-size: 0.9em;
+    font-size: 12px;
+    color: #6c757d;
+    padding: 5px 15px;
+    border-left: 3px solid #6c757d;
+    margin: 5px 0;
     white-space: pre-wrap;
-    word-wrap: break-word;
+}
+
+.debug-label {
+    font-weight: bold;
+    color: #495057;
+}
+
+.debug-data {
+    color: #6c757d;
+    margin-left: 10px;
 }
 
 .welcome-message {
@@ -372,10 +345,4 @@ input:checked + .slider:before {
     background-color: var(--primary-color);
     color: white;
     border-color: var(--primary-color);
-}
-
-.debug-label {
-    font-weight: bold;
-    margin-bottom: 0.5rem;
-    display: block;
 }

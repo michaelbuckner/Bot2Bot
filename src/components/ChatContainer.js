@@ -17,6 +17,7 @@ const ChatContainer = () => {
   const [isPolling, setIsPolling] = useState(false);
   const pollIntervalRef = useRef(null);
   const [isLoading, setIsLoading] = useState(false);
+  const chatMessages = useRef(null);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
@@ -33,7 +34,62 @@ const ChatContainer = () => {
   }, []);
 
   const addMessage = (content, className) => {
-    setMessages(prev => [...prev, { content, className, id: Date.now() }]);
+    if (!content) {
+      console.error('Empty message content');
+      return;
+    }
+
+    if (isDebug) {
+      addDebugMessage('Adding message:', { content, className });
+    }
+
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${className}`;
+
+    // Add source icon for bot messages
+    if (className.includes('bot-message')) {
+      const iconDiv = document.createElement('div');
+      iconDiv.className = 'message-icon';
+      
+      // Set data-source attribute for styling
+      messageDiv.setAttribute('data-source', isServiceNow ? 'servicenow' : 'gpt');
+      
+      // Add appropriate icon
+      if (isServiceNow) {
+        iconDiv.innerHTML = '<img src="/static/servicenow-icon.png" alt="ServiceNow" width="24" height="24">';
+      } else {
+        iconDiv.innerHTML = '<img src="/static/openai.png" alt="OpenAI" width="24" height="24">';
+      }
+      messageDiv.appendChild(iconDiv);
+    }
+
+    // Create message content
+    const messageContent = document.createElement('div');
+    messageContent.className = 'message-content';
+    
+    if (className.includes('link-message')) {
+      // Make link messages clickable
+      const link = document.createElement('a');
+      link.href = content.replace('Learn more: ', '');
+      link.target = '_blank';
+      link.textContent = content;
+      messageContent.appendChild(link);
+    } else if (className.includes('picker-message')) {
+      // Format picker messages with proper line breaks
+      messageContent.style.whiteSpace = 'pre-line';
+      messageContent.textContent = content;
+    } else {
+      // Regular message
+      messageContent.textContent = content;
+    }
+
+    messageDiv.appendChild(messageContent);
+    chatMessages.current.appendChild(messageDiv);
+    scrollToBottom();
+
+    if (isDebug) {
+      addDebugMessage('Message added successfully');
+    }
   };
 
   const addDebugMessage = (label, data = '') => {
@@ -314,6 +370,13 @@ const ChatContainer = () => {
     }
   };
 
+  const scrollToBottom = () => {
+    const chatMessagesDiv = chatMessages.current;
+    if (chatMessagesDiv) {
+      chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
+    }
+  };
+
   return (
     <div className="chat-container">
       <ChatHeader 
@@ -325,7 +388,7 @@ const ChatContainer = () => {
         setIsDebug={setIsDebug}
         onLogout={handleLogout}
       />
-      <ChatMessages messages={messages} isLoading={isLoading} />
+      <ChatMessages ref={chatMessages} messages={messages} isLoading={isLoading} />
       <ConversationStarters onSelect={handleSendMessage} />
       <ChatInput onSendMessage={handleSendMessage} />
     </div>

@@ -332,12 +332,14 @@ async def servicenow_callback(
                         if not isinstance(msg, dict):
                             continue
                         
-                        # Skip all ActionMsg types (spinners, etc)
-                        if msg.get('uiType') == 'ActionMsg':
-                            continue
-                        
                         # Keep OutputCard and Picker messages
-                        if msg.get('uiType') in ['OutputCard', 'Picker', 'OutputText']:
+                        if msg.get('uiType') == 'ActionMsg':
+                            if msg.get('actionType') == 'System':
+                                content_messages.append({
+                                    'uiType': 'OutputText',
+                                    'value': msg.get('message', '')
+                                })
+                        elif msg.get('uiType') in ['OutputCard', 'Picker', 'OutputText']:
                             content_messages.append(msg)
 
                     if content_messages:
@@ -409,9 +411,17 @@ async def get_servicenow_responses(
     logger.info("Found %d responses for request %s", len(responses), request_id)
     
     # Filter out spinner messages
-    content_messages = [msg for msg in responses if msg.get("uiType") in ["OutputCard", "Picker", "OutputText"]]
-    logger.info("Filtered to %d content messages", len(content_messages))
-    
+    content_messages = []
+    for msg in responses:
+        if msg.get('uiType') == 'ActionMsg':
+            if msg.get('actionType') == 'System':
+                content_messages.append({
+                    'uiType': 'OutputText',
+                    'value': msg.get('message', '')
+                })
+        elif msg.get('uiType') in ['OutputCard', 'Picker', 'OutputText']:
+            content_messages.append(msg)
+
     # Only remove from pending_responses if explicitly acknowledged
     if acknowledge and content_messages:
         del pending_responses[request_id]

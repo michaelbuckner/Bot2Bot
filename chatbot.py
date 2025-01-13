@@ -367,9 +367,11 @@ async def poll_request(request_id: str, acknowledge: bool = False, user: Optiona
     logger.info(f"=== Poll Request ===")
     logger.info(f"Request ID: {request_id}")
     logger.info(f"Acknowledge: {acknowledge}")
+    logger.info(f"User: {user}")
 
     if not user:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+        logger.error("Authentication failed")
+        raise HTTPException(status_code=401, detail="Authentication required")
 
     try:
         if request_id not in pending_responses:

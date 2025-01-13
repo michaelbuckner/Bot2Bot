@@ -118,12 +118,19 @@ const ChatContainer = () => {
               method: 'GET',
               headers: {
                 'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
               },
               credentials: 'include'
             });
 
             if (!pollResponse.ok) {
               if (isDebug) addDebugMessage('Poll request failed:', pollResponse.status);
+              if (pollResponse.status === 401) {
+                // Handle authentication error
+                if (isDebug) addDebugMessage('Authentication failed, redirecting to login');
+                window.location.href = '/login';
+                return;
+              }
               throw new Error(`Poll failed: ${pollResponse.status}`);
             }
 
@@ -236,6 +243,7 @@ const ChatContainer = () => {
                     method: 'GET',
                     headers: {
                       'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${localStorage.getItem('token')}`
                     },
                     credentials: 'include'
                   });

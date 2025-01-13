@@ -148,7 +148,7 @@ const ChatContainer = () => {
         body: JSON.stringify({
           message,
           session_id: sessionId.current,
-          use_servicenow: true
+          use_servicenow: isServiceNow
         }),
         credentials: 'include'
       });

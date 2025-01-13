@@ -1,6 +1,4 @@
 import React, { useRef, useEffect } from 'react';
-import openaiIcon from '../static/openai.png';
-import servicenowIcon from '../static/servicenow-icon.png';
 
 const ChatMessages = React.forwardRef(({ messages, isLoading }, ref) => {
   useEffect(() => {
@@ -17,7 +15,7 @@ const ChatMessages = React.forwardRef(({ messages, isLoading }, ref) => {
         <div key={index} className={`message ${message.type}`}>
           <div className="message-icon">
             <img 
-              src={message.source === 'servicenow' ? servicenowIcon : openaiIcon} 
+              src={message.source === 'servicenow' ? '/images/servicenow-icon.png' : '/images/openai.png'} 
               alt={message.source === 'servicenow' ? 'ServiceNow' : 'OpenAI'} 
               className="source-icon"
             />
@@ -35,7 +33,7 @@ const ChatMessages = React.forwardRef(({ messages, isLoading }, ref) => {
         <div key={index} className={`message ${message.type}`}>
           <div className="message-icon">
             <img 
-              src={message.source === 'servicenow' ? servicenowIcon : openaiIcon} 
+              src={message.source === 'servicenow' ? '/images/servicenow-icon.png' : '/images/openai.png'} 
               alt={message.source === 'servicenow' ? 'ServiceNow' : 'OpenAI'} 
               className="source-icon"
             />
@@ -51,7 +49,7 @@ const ChatMessages = React.forwardRef(({ messages, isLoading }, ref) => {
         <div key={index} className={`message ${message.type}`}>
           <div className="message-icon">
             <img 
-              src={message.source === 'servicenow' ? servicenowIcon : openaiIcon} 
+              src={message.source === 'servicenow' ? '/images/servicenow-icon.png' : '/images/openai.png'} 
               alt={message.source === 'servicenow' ? 'ServiceNow' : 'OpenAI'} 
               className="source-icon"
             />

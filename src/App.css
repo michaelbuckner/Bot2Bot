@@ -162,6 +162,7 @@ input:checked + .slider:before {
 .message {
   display: flex;
   align-items: flex-start;
+  gap: 8px;
   margin: 10px;
   padding: 10px;
   border-radius: 10px;
@@ -169,14 +170,16 @@ input:checked + .slider:before {
 }
 
 .message-icon {
-  margin-right: 10px;
   flex-shrink: 0;
+  width: 24px;
+  height: 24px;
 }
 
 .source-icon {
-  width: 24px;
-  height: 24px;
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
+  object-fit: cover;
 }
 
 .message-content {
@@ -185,12 +188,14 @@ input:checked + .slider:before {
 }
 
 .user-message {
+  margin-left: auto;
   background-color: var(--user-message-background);
   color: var(--user-message-color);
   align-self: flex-end;
 }
 
 .bot-message {
+  margin-right: auto;
   background-color: var(--bot-message-background);
   color: var(--bot-message-color);
   align-self: flex-start;

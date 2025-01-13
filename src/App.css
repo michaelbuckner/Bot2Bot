@@ -180,6 +180,16 @@ input:checked + .slider:before {
   align-self: flex-start;
 }
 
+.bot-message.system-message {
+  font-style: italic;
+  color: #666;
+  font-size: 0.9em;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin: 4px 0;
+}
+
 .debug-message {
   background-color: var(--debug-message-background);
   color: var(--debug-message-color);

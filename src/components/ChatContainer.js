@@ -149,16 +149,28 @@ const ChatContainer = () => {
                   }
 
                   if (msg.uiType === 'ActionMsg') {
-                    hasSpinner = true;
                     if (msg.actionType === 'StartSpinner') {
+                      hasSpinner = true;
                       setIsLoading(true);
                       if (isDebug) {
                         addDebugMessage('Started spinner');
                       }
                     } else if (msg.actionType === 'EndSpinner') {
+                      hasSpinner = true;
                       setIsLoading(false);
                       if (isDebug) {
                         addDebugMessage('Ended spinner');
+                      }
+                    } else if (msg.actionType === 'System') {
+                      hasContent = true;
+                      addMessage(msg.message, 'bot-message system-message');
+                      if (isDebug) {
+                        addDebugMessage('Added system message:', msg.message);
+                      }
+                    } else if (msg.actionType === 'StartConversation') {
+                      // Just log this for debugging
+                      if (isDebug) {
+                        addDebugMessage('Started conversation:', msg.conversationId);
                       }
                     }
                   } else if (msg.uiType === 'OutputCard') {

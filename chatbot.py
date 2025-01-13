@@ -17,6 +17,7 @@ import random
 from dotenv import load_dotenv
 import hmac
 import hashlib
+import traceback
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -290,83 +291,75 @@ pending_responses = {}
 @app.post("/servicenow/callback")
 async def servicenow_callback(request: Request, credentials: HTTPBasicCredentials = Depends(security)):
     """Handle callbacks from ServiceNow."""
-    try:
-        logger.info("=== ServiceNow Callback Received ===")
-        logger.info("Headers: %s", request.headers)
+    logger.info("=== ServiceNow Callback Received ===")
+    logger.info(f"Headers: {request.headers}")
+    
+    # Verify credentials
+    logger.info("Attempting to verify credentials: %s", credentials.username)
+    verify_callback_credentials(credentials)
+    logger.info("Credentials verified successfully")
+    
+    # Get the callback data
+    callback_data = await request.json()
+    logger.info("Raw callback body: %s", json.dumps(callback_data))
+    
+    # Parse the callback data
+    callback = ServiceNowCallback(**callback_data)
+    request_id = callback.requestId
+    
+    if not request_id:
+        raise HTTPException(status_code=400, detail="Missing requestId")
+    
+    logger.info("Processing callback for requestId: %s", request_id)
+    
+    # Store the response
+    if request_id not in pending_responses:
+        pending_responses[request_id] = []
         
-        # Verify credentials
-        logger.info("Attempting to verify credentials: %s", credentials.username)
-        verify_callback_credentials(credentials)
-        logger.info("Credentials verified successfully")
-        
-        # Get the callback data
-        callback_data = await request.json()
-        logger.info("Raw callback body: %s", json.dumps(callback_data))
-        
-        # Parse the callback data
-        callback = ServiceNowCallback(**callback_data)
-        request_id = callback.requestId
-        
-        if not request_id:
-            raise HTTPException(status_code=400, detail="Missing requestId")
-        
-        logger.info("Processing callback for requestId: %s", request_id)
-        
-        # Store the response
-        if request_id not in pending_responses:
-            pending_responses[request_id] = []
+    # Add the new messages to the list
+    if callback.body:
+        if isinstance(callback.body, list):
+            pending_responses[request_id].extend(callback.body)
+        else:
+            pending_responses[request_id].append(callback.body)
             
-        # Add the new messages to the list
-        if callback.body:
-            if isinstance(callback.body, list):
-                pending_responses[request_id].extend(callback.body)
-            else:
-                pending_responses[request_id].append(callback.body)
-                
-        logger.info("Updated messages for request %s: %s", request_id, json.dumps(pending_responses[request_id], indent=2))
-        
-        return {"status": "success"}
-    except Exception as e:
-        logger.error("Error processing ServiceNow callback: %s", str(e), exc_info=True)
-        raise HTTPException(status_code=400, detail=f"Error processing callback: {str(e)}")
+    logger.info("Updated messages for request %s: %s", request_id, json.dumps(pending_responses[request_id], indent=2))
+    
+    return {"status": "success"}
 
 @app.get("/servicenow/responses/{request_id}")
-async def get_servicenow_responses(
-    request_id: str,
-    acknowledge: bool = False,
-    user: Optional[User] = Depends(get_current_user)
-):
-    """Get responses for a specific request ID."""
+async def get_servicenow_responses(request_id: str, acknowledge: bool = False, user: Optional[User] = Depends(get_current_user)):
+    logger.info(f"=== Get ServiceNow Responses ===")
+    logger.info(f"Request ID: {request_id}")
+    logger.info(f"Acknowledge: {acknowledge}")
+
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    
-    logger.info("Getting responses for request %s (acknowledge=%s)", request_id, acknowledge)
-    
-    if request_id not in pending_responses:
-        logger.info("No pending responses for request %s", request_id)
-        return {
-            "servicenow_response": {
-                "status": "success",
-                "body": []
-            }
-        }
-    
-    # Get the responses
-    responses = pending_responses[request_id]
-    logger.info("Found %d responses for request %s", len(responses), request_id)
-    logger.info("Response content: %s", json.dumps(responses, indent=2))
-    
-    # If acknowledging, remove from pending responses
-    if acknowledge:
-        del pending_responses[request_id]
-        logger.info("Removed acknowledged messages for request %s", request_id)
-    
-    return {
-        "servicenow_response": {
-            "status": "success",
-            "body": responses
-        }
-    }
+
+    try:
+        if request_id not in pending_responses:
+            logger.info("No responses found for request ID")
+            return {"servicenow_response": {"body": []}}
+
+        response_data = pending_responses[request_id]
+        logger.info(f"Found response data: {response_data}")
+
+        if acknowledge:
+            logger.info("Acknowledging and removing response")
+            pending_responses.pop(request_id)
+            return {"servicenow_response": {"body": []}}
+
+        if not response_data:
+            logger.info("Response data is empty")
+            return {"servicenow_response": {"body": []}}
+
+        logger.info(f"Returning response with {len(response_data)} messages")
+        return {"servicenow_response": {"body": response_data}}
+
+    except Exception as e:
+        logger.error(f"Error getting responses: {str(e)}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/poll/{request_id}")
 async def poll_request(request_id: str, acknowledge: bool = False):

@@ -100,17 +100,16 @@ const ChatContainer = () => {
 
         const pollInterval = setInterval(async () => {
           if (!isPolling) {
+            if (isDebug) addDebugMessage('Polling stopped: isPolling is false');
             clearInterval(pollInterval);
             return;
           }
 
           if (attempts >= maxAttempts) {
+            if (isDebug) addDebugMessage('Polling stopped: max attempts reached');
             clearInterval(pollInterval);
             setIsPolling(false);
             addMessage('No more responses from ServiceNow', 'bot-message system-message');
-            if (isDebug) {
-              addDebugMessage('Polling timed out');
-            }
             return;
           }
 
@@ -120,6 +119,7 @@ const ChatContainer = () => {
           }
 
           try {
+            if (isDebug) addDebugMessage('Sending poll request to:', pollUrl);
             const pollResponse = await fetch(pollUrl, {
               method: 'GET',
               headers: {
@@ -129,12 +129,14 @@ const ChatContainer = () => {
             });
 
             if (!pollResponse.ok) {
+              if (isDebug) addDebugMessage('Poll request failed:', pollResponse.status);
               throw new Error(`Poll failed: ${pollResponse.status}`);
             }
 
             const pollData = await pollResponse.json();
             if (isDebug) {
               addDebugMessage('Poll Response:', pollData);
+              addDebugMessage('Response body:', pollData.servicenow_response?.body || 'No body');
             }
 
             if (pollData.servicenow_response && pollData.servicenow_response.body) {
@@ -142,9 +144,15 @@ const ChatContainer = () => {
               let hasContent = false;
               let hasSpinner = false;
 
+              if (isDebug) addDebugMessage(`Processing ${messages.length} messages`);
+
               for (const msg of messages) {
                 if (isDebug) {
-                  addDebugMessage('Processing message:', msg);
+                  addDebugMessage('Processing message:', {
+                    type: msg.uiType,
+                    action: msg.actionType,
+                    data: msg.data || msg.message || 'No data'
+                  });
                 }
 
                 switch (msg.uiType) {
@@ -168,21 +176,28 @@ const ChatContainer = () => {
                       case 'StartConversation':
                         if (isDebug) addDebugMessage('Started conversation:', msg.conversationId);
                         break;
+                      default:
+                        if (msg.message) {
+                          hasContent = true;
+                          addMessage(msg.message, 'bot-message');
+                          if (isDebug) addDebugMessage('Added message:', msg.message);
+                        }
+                        break;
                     }
                     break;
 
                   case 'OutputCard':
+                    hasContent = true;  // Mark as content even if parsing fails
                     try {
                       const cardData = JSON.parse(msg.data);
                       if (isDebug) addDebugMessage('Card data:', cardData);
                       
                       for (const field of cardData.fields) {
+                        if (isDebug) addDebugMessage('Processing field:', field);
                         if (field.fieldLabel === 'Top Result:') {
-                          hasContent = true;
                           addMessage(field.fieldValue, 'bot-message');
                           if (isDebug) addDebugMessage('Added message:', field.fieldValue);
                         } else if (field.fieldLabel.includes('KB')) {
-                          hasContent = true;
                           const linkMessage = `Learn more: ${field.fieldValue}`;
                           addMessage(linkMessage, 'bot-message link-message');
                           if (isDebug) addDebugMessage('Added link:', linkMessage);
@@ -190,7 +205,10 @@ const ChatContainer = () => {
                       }
                     } catch (e) {
                       console.error('Failed to parse card data:', e);
-                      if (isDebug) addDebugMessage('Error parsing card:', e);
+                      if (isDebug) {
+                        addDebugMessage('Error parsing card:', e.message);
+                        addDebugMessage('Raw card data:', msg.data);
+                      }
                     }
                     break;
 
@@ -203,9 +221,18 @@ const ChatContainer = () => {
                 }
               }
 
+              if (isDebug) {
+                addDebugMessage('Message processing complete:', {
+                  hasContent,
+                  hasSpinner,
+                  messageCount: messages.length
+                });
+              }
+
               // Acknowledge messages if we have content or spinners
               if (hasContent || hasSpinner) {
                 try {
+                  if (isDebug) addDebugMessage('Acknowledging messages');
                   const ackResponse = await fetch(`${pollUrl}?acknowledge=true`, {
                     method: 'GET',
                     headers: {
@@ -218,21 +245,30 @@ const ChatContainer = () => {
                     if (isDebug) addDebugMessage('Failed to acknowledge messages:', ackResponse.status);
                   } else if (isDebug) addDebugMessage('Messages acknowledged');
                 } catch (e) {
-                  if (isDebug) addDebugMessage('Error acknowledging messages:', e);
+                  if (isDebug) addDebugMessage('Error acknowledging messages:', e.message);
                 }
+              } else if (isDebug) {
+                addDebugMessage('No messages to acknowledge');
               }
 
               // Stop polling if we have content
               if (hasContent) {
+                if (isDebug) addDebugMessage('Stopping poll: content received');
                 clearInterval(pollInterval);
                 setIsPolling(false);
-                if (isDebug) addDebugMessage('Polling complete');
                 return;
+              } else if (isDebug) {
+                addDebugMessage('Continuing poll: no content yet');
               }
+            } else if (isDebug) {
+              addDebugMessage('No messages in response');
             }
           } catch (error) {
             console.error('Error during polling:', error);
-            if (isDebug) addDebugMessage('Polling error:', error);
+            if (isDebug) {
+              addDebugMessage('Polling error:', error.message);
+              addDebugMessage('Error stack:', error.stack);
+            }
           }
         }, 1000);
       } else {

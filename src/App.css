@@ -306,3 +306,25 @@ input:checked + .slider:before {
     transform: scale(1.0);
   }
 }
+
+.picker-options {
+  margin: 0;
+  white-space: pre-line;
+  font-family: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.message-content {
+  word-break: break-word;
+}
+
+.bot-message.link-message a {
+  color: #0066cc;
+  text-decoration: none;
+}
+
+.bot-message.link-message a:hover {
+  text-decoration: underline;
+}

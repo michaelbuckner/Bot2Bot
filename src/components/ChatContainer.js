@@ -188,6 +188,8 @@ const ChatContainer = () => {
                     } catch (e) {
                       console.error('Failed to parse card data:', e);
                       addDebugMessage('Error parsing card:', e.message);
+                      // Still try to display something if parsing fails
+                      addMessage(msg.data, 'bot-message');
                     }
                     break;
                   case 'Picker':
@@ -198,8 +200,10 @@ const ChatContainer = () => {
                     addMessage(pickerMessage, 'bot-message picker-message');
                     break;
                   default:
-                    // If unknown, just display something
-                    addMessage(JSON.stringify(msg), 'bot-message');
+                    if (msg.message) {
+                      hasContent = true;
+                      addMessage(msg.message, 'bot-message');
+                    }
                     break;
                 }
               }

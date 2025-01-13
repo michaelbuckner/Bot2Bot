@@ -154,42 +154,65 @@ const ChatContainer = () => {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const rawText = await response.text();
-      addDebugMessage('Raw response text:', rawText);
-      const responseData = JSON.parse(rawText);
-      addDebugMessage('Response Payload:', responseData);
+      const data = await response.json();
+      console.log('Chat response data:', data);
 
-      // Start polling if we have a ServiceNow request ID
-      if (responseData.request_id) {
-        console.log('Starting polling for request:', responseData.request_id);
+      // Check for request_id in the correct location
+      const requestId = data?.servicenow_response?.requestId;
+      console.log('ServiceNow request ID:', requestId);
+
+      if (requestId) {
+        console.log('Starting polling for request:', requestId);
         let pollCount = 0;
         const maxPolls = 30; // Maximum number of polling attempts
         
         const pollInterval = setInterval(async () => {
           try {
-            console.log(`Polling attempt ${pollCount + 1} for request ${responseData.request_id}`);
-            const pollResponse = await fetch(`/servicenow/responses/${responseData.request_id}`, {
+            console.log(`Polling attempt ${pollCount + 1} for request ${requestId}`);
+            const pollResponse = await fetch(`/servicenow/responses/${requestId}`, {
               method: 'GET',
               credentials: 'include'
             });
 
-            await handlePollResponse(pollResponse);
-            pollCount++;
+            console.log('Poll response:', pollResponse);
+            if (!pollResponse.ok) {
+              console.error('Poll request failed:', pollResponse.status);
+              throw new Error(`Poll failed: ${pollResponse.status}`);
+            }
 
+            const pollData = await pollResponse.json();
+            console.log('Poll response data:', pollData);
+
+            if (pollData.messages && pollData.messages.length > 0) {
+              console.log('Processing messages from poll:', pollData.messages);
+              const hasContent = processMessages(pollData.messages);
+              if (hasContent) {
+                console.log('Content received, stopping polling');
+                clearInterval(pollInterval);
+                setIsLoading(false);
+              }
+            }
+
+            pollCount++;
             if (pollCount >= maxPolls) {
-              console.log(`Reached maximum poll attempts (${maxPolls}) for request ${responseData.request_id}`);
+              console.log(`Reached maximum poll attempts (${maxPolls})`);
               clearInterval(pollInterval);
               setIsLoading(false);
+              addMessage("I'm sorry, but I didn't receive a response in time. Please try again.", 'bot-message system-message');
             }
           } catch (error) {
             console.error('Error during polling:', error);
-            addDebugMessage('Polling error:', error.message);
             clearInterval(pollInterval);
             setIsLoading(false);
+            addMessage('An error occurred while getting the response. Please try again.', 'bot-message system-message');
           }
         }, 1000);
       } else {
-        console.log('No request_id in response, skipping polling');
+        console.log('No ServiceNow request ID found in response');
+        if (data.response) {
+          console.log('Adding direct response:', data.response);
+          addMessage(data.response, 'bot-message');
+        }
         setIsLoading(false);
       }
     } catch (error) {

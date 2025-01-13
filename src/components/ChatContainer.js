@@ -141,10 +141,12 @@ const ChatContainer = () => {
               if (pollData.servicenow_response && pollData.servicenow_response.body) {
                 const messages = pollData.servicenow_response.body;
                 let hasContent = false;
+                let hasSpinner = false;
 
                 for (const msg of messages) {
                   if (msg.uiType === 'ActionMsg') {
                     // Handle spinner messages
+                    hasSpinner = true;
                     if (msg.actionType === 'StartSpinner') {
                       setIsLoading(true);
                     } else if (msg.actionType === 'EndSpinner') {
@@ -190,8 +192,8 @@ const ChatContainer = () => {
                   }
                 }
 
-                if (hasContent) {
-                  // Acknowledge messages
+                // Always acknowledge messages that have either content or spinners
+                if (hasContent || hasSpinner) {
                   try {
                     const ackResponse = await fetch(`${pollUrl}?acknowledge=true`, {
                       method: 'GET',
@@ -213,7 +215,10 @@ const ChatContainer = () => {
                       addDebugMessage('Error acknowledging messages:', e);
                     }
                   }
-                  
+                }
+
+                // Only stop polling if we have actual content (not just spinners)
+                if (hasContent) {
                   clearInterval(pollInterval);
                   setIsPolling(false);
                   if (isDebug) {

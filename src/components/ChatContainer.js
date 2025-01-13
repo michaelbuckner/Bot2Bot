@@ -47,10 +47,11 @@ const ChatContainer = () => {
     if (!message.trim()) return;
 
     // Add user message to chat
-    addMessage(message, 'user-message');
+    const userMessage = { text: message, type: 'user-message' };
+    setMessages(prev => [...prev, userMessage]);
 
     try {
-      // Send message to backend
+      setIsLoading(true);
       const response = await fetch('/chat', {
         method: 'POST',
         headers: {
@@ -59,7 +60,7 @@ const ChatContainer = () => {
         body: JSON.stringify({
           message: message,
           session_id: sessionId.current,
-          use_servicenow: isServiceNow
+          use_servicenow: true
         }),
         credentials: 'include'
       });
@@ -68,35 +69,24 @@ const ChatContainer = () => {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
+      const responseData = await response.json();
       if (isDebug) {
-        addDebugMessage('Request Payload:', {
-          message: message,
-          session_id: sessionId.current,
-          use_servicenow: isServiceNow
-        });
-        const rawText = await response.clone().text();
-        addDebugMessage('Raw response text:', rawText);
+        addDebugMessage('Raw response text:', await response.clone().text());
+        addDebugMessage('Response Payload:', responseData);
       }
 
-      const data = await response.json();
-      if (isDebug) {
-        addDebugMessage('Response Payload:', data);
-      }
+      // Start polling if we have a ServiceNow request ID
+      if (responseData.servicenow_response?.requestId) {
+        const requestId = responseData.servicenow_response.requestId;
+        if (isDebug) addDebugMessage('Starting polling for request:', requestId);
 
-      if (data.servicenow_response) {
-        // Start polling for ServiceNow responses
-        const requestId = data.servicenow_response.requestId;
-        if (isDebug) {
-          addDebugMessage('Starting polling for request:', requestId);
-        }
-        const pollUrl = `/servicenow/responses/${requestId}`;
-        if (isDebug) {
-          addDebugMessage('Polling URL:', pollUrl);
-        }
+        // Set up polling
+        const pollUrl = `/poll/${requestId}`;
+        if (isDebug) addDebugMessage('Polling URL:', pollUrl);
 
         setIsPolling(true);
         let attempts = 0;
-        const maxAttempts = 60; // 1 minute with 1s intervals
+        const maxAttempts = 60;
 
         const pollInterval = setInterval(async () => {
           if (!isPolling) {
@@ -273,8 +263,8 @@ const ChatContainer = () => {
         }, 1000);
       } else {
         // Handle GPT response
-        if (data.response) {
-          addMessage(data.response, 'bot-message');
+        if (responseData.response) {
+          addMessage(responseData.response, 'bot-message');
         }
       }
     } catch (error) {
@@ -283,6 +273,8 @@ const ChatContainer = () => {
       if (isDebug) {
         addDebugMessage('Error:', error);
       }
+    } finally {
+      setIsLoading(false);
     }
   };
 

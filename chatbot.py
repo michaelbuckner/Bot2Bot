@@ -362,31 +362,39 @@ async def get_servicenow_responses(request_id: str, acknowledge: bool = False, u
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/poll/{request_id}")
-async def poll_request(request_id: str, acknowledge: bool = False):
-    logging.info(f"Polling for request {request_id}")
-    
-    if request_id in pending_responses:
-        messages = pending_responses[request_id]
+async def poll_request(request_id: str, acknowledge: bool = False, user: Optional[User] = Depends(get_current_user)):
+    """Get responses for a specific request ID."""
+    logger.info(f"=== Poll Request ===")
+    logger.info(f"Request ID: {request_id}")
+    logger.info(f"Acknowledge: {acknowledge}")
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        if request_id not in pending_responses:
+            logger.info("No responses found for request ID")
+            return {"servicenow_response": {"body": []}}
+
+        response_data = pending_responses[request_id]
+        logger.info(f"Found response data: {response_data}")
+
         if acknowledge:
-            logging.info(f"Acknowledging and removing messages for request {request_id}")
-            del pending_responses[request_id]
-            return {"status": "acknowledged"}
-            
-        if messages:
-            logging.info(f"Returning {len(messages)} messages for request {request_id}")
-            return {
-                "servicenow_response": {
-                    "status": "success",
-                    "body": messages
-                }
-            }
-    
-    return {
-        "servicenow_response": {
-            "status": "pending",
-            "body": []
-        }
-    }
+            logger.info("Acknowledging and removing response")
+            pending_responses.pop(request_id)
+            return {"servicenow_response": {"body": []}}
+
+        if not response_data:
+            logger.info("Response data is empty")
+            return {"servicenow_response": {"body": []}}
+
+        logger.info(f"Returning response with {len(response_data)} messages")
+        return {"servicenow_response": {"body": response_data}}
+
+    except Exception as e:
+        logger.error(f"Error getting responses: {str(e)}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/debug/pending_responses")
 async def debug_pending_responses(

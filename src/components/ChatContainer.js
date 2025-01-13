@@ -14,11 +14,22 @@ const ChatContainer = () => {
   });
   const [isDebug, setIsDebug] = useState(false);
   const sessionId = useRef(Math.random().toString(36).substring(7));
+  const [isPolling, setIsPolling] = useState(false);
+  const pollIntervalRef = useRef(null);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
     localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
+
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+      setIsPolling(false);
+    };
+  }, []);
 
   const addMessage = (content, className) => {
     setMessages(prev => [...prev, { content, className, id: Date.now() }]);
@@ -82,8 +93,14 @@ const ChatContainer = () => {
           const maxAttempts = 30;
 
           const pollInterval = setInterval(async () => {
+            if (!isPolling) {
+              clearInterval(pollInterval);
+              return;
+            }
+
             try {
               if (attempts >= maxAttempts) {
+                setIsPolling(false);
                 clearInterval(pollInterval);
                 addMessage('No more responses from ServiceNow', 'bot-message system-message');
                 if (isDebug) {
@@ -114,13 +131,14 @@ const ChatContainer = () => {
               
               if (pollData.messages && pollData.messages.length > 0) {
                 pollData.messages.forEach(msg => {
-                    if (msg.uiType === 'OutputCard' || msg.uiType === 'OutputText') {
-                        addMessage(msg.value || msg.text || JSON.stringify(msg), 'bot-message');
-                    }
+                  if (msg.uiType === 'OutputCard' || msg.uiType === 'OutputText') {
+                    addMessage(msg.value || msg.text || JSON.stringify(msg), 'bot-message');
+                  }
                 });
-            }
+              }
 
               if (pollData.done) {
+                setIsPolling(false);
                 clearInterval(pollInterval);
                 if (isDebug) {
                   addDebugMessage('Polling complete');
@@ -131,12 +149,14 @@ const ChatContainer = () => {
               if (isDebug) {
                 addDebugMessage('Polling error:', error.message);
               }
+              setIsPolling(false);
               clearInterval(pollInterval);
             }
           }, 1000);
+          pollIntervalRef.current = pollInterval;
+          setIsPolling(true);
         }
       } else {
-        // Handle GPT response
         if (data.response) {
           addMessage(data.response, 'bot-message');
         }

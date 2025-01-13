@@ -292,81 +292,88 @@ async def servicenow_callback(
     request: Request,
     credentials: HTTPBasicCredentials = Depends(security)
 ):
-    logger.info("=== ServiceNow Callback Received ===")
-    logger.info("Headers: %s", dict(request.headers))
-    
-    verify_callback_credentials(credentials)
-    logger.info("Credentials verified successfully")
-    
-    # Get raw request body
-    raw_body = await request.body()
-    logger.info("Raw callback body: %s", raw_body.decode())
-    
-    # Parse JSON
     try:
-        body = json.loads(raw_body)
-    except json.JSONDecodeError as e:
-        logger.error("Failed to parse callback JSON: %s", str(e))
-        raise HTTPException(status_code=400, detail="Invalid JSON")
-
-    try:
-        callback = ServiceNowCallback(**body)
+        logger.info("=== ServiceNow Callback Received ===")
+        logger.info("Headers: %s", dict(request.headers))
         
-        # Extract request ID from the callback
-        request_id = callback.requestId
-        if not request_id:
-            logger.warning("No requestId in callback")
-            return {"status": "error", "message": "No requestId in callback"}
-
-        logger.info("Processing callback for requestId: %s", request_id)
+        # Log auth attempt before verification
+        logger.info("Attempting to verify credentials: %s", credentials.username)
+        verify_callback_credentials(credentials)
+        logger.info("Credentials verified successfully")
         
-        # Process the callback body
-        if callback.body:
-            if isinstance(callback.body, list):
-                # Filter out spinner/action messages
-                content_messages = []
-                for msg in callback.body:
-                    if not isinstance(msg, dict):
-                        continue
-                        
-                    # Skip all ActionMsg types (spinners, etc)
-                    if msg.get('uiType') == 'ActionMsg':
-                        continue
-                        
-                    # Keep OutputCard and Picker messages
-                    if msg.get('uiType') in ['OutputCard', 'Picker', 'OutputText']:
-                        content_messages.append(msg)
+        # Get raw request body
+        raw_body = await request.body()
+        logger.info("Raw callback body: %s", raw_body.decode())
+        
+        # Parse JSON
+        try:
+            body = json.loads(raw_body)
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse callback JSON: %s", str(e))
+            raise HTTPException(status_code=400, detail="Invalid JSON")
 
-                if content_messages:
-                    logger.info("Storing %d content messages for request %s", 
-                              len(content_messages), request_id)
+        try:
+            callback = ServiceNowCallback(**body)
+            
+            # Extract request ID from the callback
+            request_id = callback.requestId
+            if not request_id:
+                logger.warning("No requestId in callback")
+                return {"status": "error", "message": "No requestId in callback"}
+
+            logger.info("Processing callback for requestId: %s", request_id)
+            
+            # Process the callback body
+            if callback.body:
+                if isinstance(callback.body, list):
+                    # Filter out spinner/action messages
+                    content_messages = []
+                    for msg in callback.body:
+                        if not isinstance(msg, dict):
+                            continue
+                        
+                        # Skip all ActionMsg types (spinners, etc)
+                        if msg.get('uiType') == 'ActionMsg':
+                            continue
+                        
+                        # Keep OutputCard and Picker messages
+                        if msg.get('uiType') in ['OutputCard', 'Picker', 'OutputText']:
+                            content_messages.append(msg)
+
+                    if content_messages:
+                        logger.info("Storing %d content messages for request %s", 
+                                  len(content_messages), request_id)
+                        
+                        # Store only content messages
+                        if request_id in pending_responses:
+                            # Get existing non-spinner messages
+                            existing_messages = [
+                                msg for msg in pending_responses[request_id]
+                                if isinstance(msg, dict) and msg.get('uiType') != 'ActionMsg'
+                            ]
+                            # Add new content messages
+                            pending_responses[request_id] = existing_messages + content_messages
+                        else:
+                            pending_responses[request_id] = content_messages
+                        
+                        logger.info("Updated messages for request %s: %s", 
+                                  request_id, json.dumps(pending_responses[request_id], indent=2))
+                else:
+                    # If body is not a list, wrap it in a list
+                    logger.warning("Callback body is not a list, wrapping it: %s", callback.body)
+                    pending_responses[request_id] = [{
+                        "uiType": "OutputText",
+                        "value": str(callback.body)
+                    }]
                     
-                    # Store only content messages
-                    if request_id in pending_responses:
-                        # Get existing non-spinner messages
-                        existing_messages = [
-                            msg for msg in pending_responses[request_id]
-                            if isinstance(msg, dict) and msg.get('uiType') != 'ActionMsg'
-                        ]
-                        # Add new content messages
-                        pending_responses[request_id] = existing_messages + content_messages
-                    else:
-                        pending_responses[request_id] = content_messages
-                        
-                    logger.info("Updated messages for request %s: %s", 
-                              request_id, json.dumps(pending_responses[request_id], indent=2))
-            else:
-                # If body is not a list, wrap it in a list
-                logger.warning("Callback body is not a list, wrapping it: %s", callback.body)
-                pending_responses[request_id] = [{
-                    "uiType": "OutputText",
-                    "value": str(callback.body)
-                }]
-                
-        return {"status": "success"}
+            return {"status": "success"}
+        except Exception as e:
+            logger.error("Error processing ServiceNow callback: %s", str(e), exc_info=True)
+            raise HTTPException(status_code=400, detail=f"Error processing callback: {str(e)}")
+
     except Exception as e:
-        logger.error("Error processing ServiceNow callback: %s", str(e), exc_info=True)
-        raise HTTPException(status_code=400, detail=f"Error processing callback: {str(e)}")
+        logger.error("Error in callback endpoint: %s", str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/servicenow/responses/{request_id}")
 async def get_servicenow_responses(

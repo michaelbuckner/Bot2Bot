@@ -37,30 +37,15 @@ const ChatMessages = React.forwardRef(({ messages, isLoading }, ref) => {
           );
         }
 
-        // Handle spinner messages
-        if (message.type === 'spinner-message') {
-          return (
-            <div key={index} className={`message ${message.type}`}>
-              <div className="loading-spinner">
-                <div className="spinner-dots">
-                  <div></div>
-                  <div></div>
-                  <div></div>
-                </div>
-              </div>
-            </div>
-          );
-        }
-
         // Regular messages
         return (
           <div key={index} className={`message ${message.type}`}>
-            {message.text}
+            <div className="message-content">{message.text}</div>
           </div>
         );
       })}
       {isLoading && (
-        <div className="message bot-message spinner-message">
+        <div className="message bot-message">
           <div className="loading-spinner">
             <div className="spinner-dots">
               <div></div>

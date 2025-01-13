@@ -152,12 +152,10 @@ const ChatContainer = () => {
                       case 'StartSpinner':
                         hasSpinner = true;
                         setIsLoading(true);
-                        addMessage('Loading...', 'bot-message spinner-message');
                         break;
                       case 'EndSpinner':
                         hasSpinner = true;
                         setIsLoading(false);
-                        addMessage('Loaded', 'bot-message spinner-message');
                         break;
                       case 'System':
                         hasContent = true;
@@ -178,6 +176,7 @@ const ChatContainer = () => {
                     hasContent = true;
                     try {
                       const cardData = JSON.parse(msg.data);
+                      addDebugMessage('Parsed card data:', cardData);
                       for (const field of (cardData.fields || [])) {
                         if (field.fieldLabel === 'Top Result:') {
                           addMessage(field.fieldValue, 'bot-message');

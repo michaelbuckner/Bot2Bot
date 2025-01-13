@@ -354,6 +354,7 @@ async def get_servicenow_responses(
     # Get the responses
     responses = pending_responses[request_id]
     logger.info("Found %d responses for request %s", len(responses), request_id)
+    logger.info("Response content: %s", json.dumps(responses, indent=2))
     
     # If acknowledging, remove from pending responses
     if acknowledge:

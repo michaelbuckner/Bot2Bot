@@ -50,217 +50,191 @@ const ChatContainer = () => {
     addMessage(message, 'user-message');
 
     try {
-      const requestPayload = {
-        message: message,
-        session_id: sessionId.current,
-        use_servicenow: isServiceNow
-      };
-
-      if (isDebug) {
-        addDebugMessage('Request Payload:', requestPayload);
-      }
-
-      const response = await fetch(`${window.location.origin}/chat`, {
+      // Send message to backend
+      const response = await fetch('/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
-        body: JSON.stringify(requestPayload)
+        body: JSON.stringify({
+          message: message,
+          session_id: sessionId.current,
+          use_servicenow: isServiceNow
+        }),
+        credentials: 'include'
       });
 
-      const rawText = await response.text();
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       if (isDebug) {
+        addDebugMessage('Request Payload:', {
+          message: message,
+          session_id: sessionId.current,
+          use_servicenow: isServiceNow
+        });
+        const rawText = await response.clone().text();
         addDebugMessage('Raw response text:', rawText);
       }
 
-      if (!response.ok) {
-        throw new Error(rawText || 'Unknown error occurred');
-      }
-
-      const data = JSON.parse(rawText);
+      const data = await response.json();
       if (isDebug) {
         addDebugMessage('Response Payload:', data);
       }
 
-      if (isServiceNow) {
-        if (data.servicenow_response && data.servicenow_response.requestId) {
-          const requestId = data.servicenow_response.requestId;
-          let attempts = 0;
-          const maxAttempts = 30;
-          setIsPolling(true);
+      if (data.servicenow_response) {
+        // Start polling for ServiceNow responses
+        const requestId = data.servicenow_response.requestId;
+        if (isDebug) {
+          addDebugMessage('Starting polling for request:', requestId);
+        }
+        const pollUrl = `/servicenow/responses/${requestId}`;
+        if (isDebug) {
+          addDebugMessage('Polling URL:', pollUrl);
+        }
 
-          if (isDebug) {
-            addDebugMessage('Starting polling for request:', requestId);
+        setIsPolling(true);
+        let attempts = 0;
+        const maxAttempts = 60; // 1 minute with 1s intervals
+
+        const pollInterval = setInterval(async () => {
+          if (!isPolling) {
+            clearInterval(pollInterval);
+            return;
           }
-          
-          const pollUrl = `${window.location.origin}/servicenow/responses/${requestId}`;
-          if (isDebug) {
-            addDebugMessage('Polling URL:', pollUrl);
-          }
-          
-          const pollInterval = setInterval(async () => {
-            if (!isPolling) {
-              clearInterval(pollInterval);
-              return;
-            }
 
-            if (attempts >= maxAttempts) {
-              clearInterval(pollInterval);
-              setIsPolling(false);
-              addMessage('No more responses from ServiceNow', 'bot-message system-message');
-              if (isDebug) {
-                addDebugMessage('Polling timed out');
-              }
-              return;
-            }
-
-            attempts++;
+          if (attempts >= maxAttempts) {
+            clearInterval(pollInterval);
+            setIsPolling(false);
+            addMessage('No more responses from ServiceNow', 'bot-message system-message');
             if (isDebug) {
-              addDebugMessage(`Polling attempt ${attempts}/${maxAttempts} for request ${requestId}`);
+              addDebugMessage('Polling timed out');
+            }
+            return;
+          }
+
+          attempts++;
+          if (isDebug) {
+            addDebugMessage(`Polling attempt ${attempts}/${maxAttempts} for request ${requestId}`);
+          }
+
+          try {
+            const pollResponse = await fetch(pollUrl, {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              credentials: 'include'
+            });
+
+            if (!pollResponse.ok) {
+              throw new Error(`Poll failed: ${pollResponse.status}`);
             }
 
-            try {
-              const pollResponse = await fetch(pollUrl, {
-                method: 'GET',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                credentials: 'include'
-              });
+            const pollData = await pollResponse.json();
+            if (isDebug) {
+              addDebugMessage('Poll Response:', pollData);
+            }
 
-              if (!pollResponse.ok) {
-                throw new Error(`Poll failed: ${pollResponse.status}`);
-              }
+            if (pollData.servicenow_response && pollData.servicenow_response.body) {
+              const messages = pollData.servicenow_response.body;
+              let hasContent = false;
+              let hasSpinner = false;
 
-              const pollData = await pollResponse.json();
-              if (isDebug) {
-                addDebugMessage('Poll Response:', pollData);
-              }
+              for (const msg of messages) {
+                if (isDebug) {
+                  addDebugMessage('Processing message:', msg);
+                }
 
-              if (pollData.servicenow_response && pollData.servicenow_response.body) {
-                const messages = pollData.servicenow_response.body;
-                let hasContent = false;
-                let hasSpinner = false;
-
-                for (const msg of messages) {
-                  if (isDebug) {
-                    addDebugMessage('Processing message:', msg);
-                  }
-
-                  if (msg.uiType === 'ActionMsg') {
-                    if (msg.actionType === 'StartSpinner') {
-                      hasSpinner = true;
-                      setIsLoading(true);
-                      if (isDebug) {
-                        addDebugMessage('Started spinner');
-                      }
-                    } else if (msg.actionType === 'EndSpinner') {
-                      hasSpinner = true;
-                      setIsLoading(false);
-                      if (isDebug) {
-                        addDebugMessage('Ended spinner');
-                      }
-                    } else if (msg.actionType === 'System') {
-                      hasContent = true;
-                      addMessage(msg.message, 'bot-message system-message');
-                      if (isDebug) {
-                        addDebugMessage('Added system message:', msg.message);
-                      }
-                    } else if (msg.actionType === 'StartConversation') {
-                      // Just log this for debugging
-                      if (isDebug) {
-                        addDebugMessage('Started conversation:', msg.conversationId);
-                      }
+                switch (msg.uiType) {
+                  case 'ActionMsg':
+                    switch (msg.actionType) {
+                      case 'StartSpinner':
+                        hasSpinner = true;
+                        setIsLoading(true);
+                        if (isDebug) addDebugMessage('Started spinner');
+                        break;
+                      case 'EndSpinner':
+                        hasSpinner = true;
+                        setIsLoading(false);
+                        if (isDebug) addDebugMessage('Ended spinner');
+                        break;
+                      case 'System':
+                        hasContent = true;
+                        addMessage(msg.message, 'bot-message system-message');
+                        if (isDebug) addDebugMessage('Added system message:', msg.message);
+                        break;
+                      case 'StartConversation':
+                        if (isDebug) addDebugMessage('Started conversation:', msg.conversationId);
+                        break;
                     }
-                  } else if (msg.uiType === 'OutputCard') {
+                    break;
+
+                  case 'OutputCard':
                     try {
                       const cardData = JSON.parse(msg.data);
-                      if (isDebug) {
-                        addDebugMessage('Card data:', cardData);
-                      }
+                      if (isDebug) addDebugMessage('Card data:', cardData);
                       
-                      // Process each field
                       for (const field of cardData.fields) {
                         if (field.fieldLabel === 'Top Result:') {
                           hasContent = true;
                           addMessage(field.fieldValue, 'bot-message');
-                          if (isDebug) {
-                            addDebugMessage('Added message:', field.fieldValue);
-                          }
+                          if (isDebug) addDebugMessage('Added message:', field.fieldValue);
                         } else if (field.fieldLabel.includes('KB')) {
-                          // Add KB article link
+                          hasContent = true;
                           const linkMessage = `Learn more: ${field.fieldValue}`;
                           addMessage(linkMessage, 'bot-message link-message');
-                          if (isDebug) {
-                            addDebugMessage('Added link:', linkMessage);
-                          }
+                          if (isDebug) addDebugMessage('Added link:', linkMessage);
                         }
                       }
                     } catch (e) {
                       console.error('Failed to parse card data:', e);
-                      if (isDebug) {
-                        addDebugMessage('Error parsing card:', e);
-                      }
+                      if (isDebug) addDebugMessage('Error parsing card:', e);
                     }
-                  } else if (msg.uiType === 'Picker') {
+                    break;
+
+                  case 'Picker':
                     hasContent = true;
                     const pickerMessage = `${msg.label}\n${msg.options.map((opt, i) => `${i + 1}. ${opt.label}`).join('\n')}`;
                     addMessage(pickerMessage, 'bot-message picker-message');
-                    if (isDebug) {
-                      addDebugMessage('Added picker:', pickerMessage);
-                    }
-                  }
-                }
-
-                // Always acknowledge messages that have either content or spinners
-                if (hasContent || hasSpinner) {
-                  try {
-                    const ackResponse = await fetch(`${pollUrl}?acknowledge=true`, {
-                      method: 'GET',
-                      headers: {
-                        'Content-Type': 'application/json',
-                      },
-                      credentials: 'include'
-                    });
-                    
-                    if (!ackResponse.ok) {
-                      if (isDebug) {
-                        addDebugMessage('Failed to acknowledge messages:', ackResponse.status);
-                      }
-                    } else if (isDebug) {
-                      addDebugMessage('Messages acknowledged');
-                    }
-                  } catch (e) {
-                    if (isDebug) {
-                      addDebugMessage('Error acknowledging messages:', e);
-                    }
-                  }
-                }
-
-                // Only stop polling if we have actual content (not just spinners)
-                if (hasContent) {
-                  clearInterval(pollInterval);
-                  setIsPolling(false);
-                  if (isDebug) {
-                    addDebugMessage('Polling complete');
-                  }
-                  return;
+                    if (isDebug) addDebugMessage('Added picker:', pickerMessage);
+                    break;
                 }
               }
-            } catch (error) {
-              console.error('Error during polling:', error);
-              if (isDebug) {
-                addDebugMessage('Polling error:', error);
+
+              // Acknowledge messages if we have content or spinners
+              if (hasContent || hasSpinner) {
+                try {
+                  const ackResponse = await fetch(`${pollUrl}?acknowledge=true`, {
+                    method: 'GET',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    credentials: 'include'
+                  });
+                  
+                  if (!ackResponse.ok) {
+                    if (isDebug) addDebugMessage('Failed to acknowledge messages:', ackResponse.status);
+                  } else if (isDebug) addDebugMessage('Messages acknowledged');
+                } catch (e) {
+                  if (isDebug) addDebugMessage('Error acknowledging messages:', e);
+                }
+              }
+
+              // Stop polling if we have content
+              if (hasContent) {
+                clearInterval(pollInterval);
+                setIsPolling(false);
+                if (isDebug) addDebugMessage('Polling complete');
+                return;
               }
             }
-          }, 1000);
-        } else {
-          if (isDebug) {
-            addDebugMessage('No requestId in response:', data);
+          } catch (error) {
+            console.error('Error during polling:', error);
+            if (isDebug) addDebugMessage('Polling error:', error);
           }
-          addMessage('Error: No request ID received', 'bot-message error-message');
-        }
+        }, 1000);
       } else {
         // Handle GPT response
         if (data.response) {

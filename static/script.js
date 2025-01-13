@@ -359,13 +359,33 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        // Safely call addDebugMessage if isDebug is defined
-        if (typeof isDebug !== 'undefined' && isDebug) {
+        if (isDebug) {
             addDebugMessage('Adding message:', { content, className });
         }
 
         const messageDiv = document.createElement('div');
         messageDiv.className = className;
+
+        // Add source icon for bot messages
+        if (className.includes('bot-message')) {
+            const iconDiv = document.createElement('div');
+            iconDiv.className = 'message-icon';
+            
+            // Set data-source attribute for styling
+            messageDiv.setAttribute('data-source', apiToggle.checked ? 'servicenow' : 'gpt');
+            
+            // Add appropriate icon
+            if (apiToggle.checked) {
+                iconDiv.innerHTML = '<img src="/static/servicenow-icon.png" alt="ServiceNow" width="24" height="24">';
+            } else {
+                iconDiv.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>`;
+            }
+            messageDiv.appendChild(iconDiv);
+        }
 
         // Create message content
         const messageContent = document.createElement('div');
@@ -391,8 +411,7 @@ document.addEventListener('DOMContentLoaded', function() {
         chatMessages.appendChild(messageDiv);
         scrollToBottom();
 
-        // Safely call addDebugMessage if isDebug is defined
-        if (typeof isDebug !== 'undefined' && isDebug) {
+        if (isDebug) {
             addDebugMessage('Message added successfully');
         }
     }

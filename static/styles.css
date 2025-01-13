@@ -167,15 +167,25 @@ body {
     flex-shrink: 0;
     width: 24px;
     height: 24px;
+    margin-top: 8px;
+    margin-left: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
 .message-icon svg {
-    width: 20px;
-    height: 20px;
-    opacity: 0.9;
+    color: #6c757d;
+}
+
+.bot-message[data-source="servicenow"] .message-icon {
+    color: #81B5A1;
+}
+
+.bot-message[data-source="servicenow"] .message-icon img {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
 }
 
 .message-content {
@@ -184,6 +194,13 @@ body {
     max-width: 80%;
     word-wrap: break-word;
     margin: 5px 0;
+}
+
+.bot-message {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 8px 0;
 }
 
 .user-message .message-content {
@@ -197,7 +214,15 @@ body {
     background-color: #f8f9fa;
     color: #212529;
     margin-right: auto;
-    margin-left: 10px;
+}
+
+[data-theme="dark"] .bot-message .message-content {
+    background-color: #343a40;
+    color: #f8f9fa;
+}
+
+[data-theme="dark"] .message-icon svg {
+    color: #adb5bd;
 }
 
 .link-message .message-content {

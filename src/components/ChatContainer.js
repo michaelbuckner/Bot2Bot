@@ -55,18 +55,24 @@ const ChatContainer = () => {
   };
 
   const processMessages = useCallback((messages) => {
+    console.log('Processing messages:', messages);
     let hasContent = false;
     messages.forEach((msg) => {
+      console.log('Processing message:', msg);
       switch (msg.uiType) {
         case 'OutputCard':
+          console.log('Processing OutputCard:', msg);
           hasContent = true;
           try {
             const cardData = JSON.parse(msg.data);
-            addDebugMessage('Parsed card data:', cardData);
+            console.log('Parsed card data:', cardData);
             for (const field of (cardData.fields || [])) {
+              console.log('Processing field:', field);
               if (field.fieldLabel === 'Top Result:') {
+                console.log('Adding top result message:', field.fieldValue);
                 addMessage(field.fieldValue, 'bot-message');
               } else if (field.fieldLabel.includes('KB')) {
+                console.log('Adding KB link message:', field.fieldValue);
                 addMessage(`Learn more: ${field.fieldValue}`, 'bot-message link-message');
               }
             }
@@ -76,49 +82,65 @@ const ChatContainer = () => {
           }
           break;
         case 'Picker':
+          console.log('Processing Picker:', msg);
           hasContent = true;
           const pickerMessage = `${msg.label}\n${msg.options
             .map((opt, i) => `${i + 1}. ${opt.label}`)
             .join('\n')}`;
+          console.log('Adding picker message:', pickerMessage);
           addMessage(pickerMessage, 'bot-message picker-message');
           break;
         case 'ActionMsg':
+          console.log('Processing ActionMsg:', msg);
           // Only show action messages if they have a message property
           if (msg.message && !msg.message.includes('Please wait')) {
+            console.log('Adding action message:', msg.message);
             hasContent = true;
             addMessage(msg.message, 'bot-message');
           }
           break;
         default:
+          console.log('Unknown message type:', msg.uiType);
           break;
       }
     });
+    console.log('Message processing complete. Has content:', hasContent);
     return hasContent;
   }, [addMessage, addDebugMessage]);
 
   const handlePollResponse = useCallback(async (response) => {
+    console.log('Handling poll response:', response);
     if (response.ok) {
       const data = await response.json();
+      console.log('Poll response data:', data);
       if (data.messages && data.messages.length > 0) {
+        console.log('Processing messages from poll:', data.messages);
         const hasContent = processMessages(data.messages);
+        console.log('Poll processing complete. Has content:', hasContent);
         if (hasContent) {
           setIsLoading(false);
         }
+      } else {
+        console.log('No messages in poll response');
       }
+    } else {
+      console.error('Poll response not ok:', response.status);
     }
   }, [processMessages]);
 
   const handleSendMessage = async (message) => {
     if (!message.trim()) return;
 
-    // Add user message to chat
-    setMessages(prev => [...prev, { text: message, type: 'user-message' }]);
-
     try {
+      console.log('Sending message:', message);
+      addMessage(message, 'user-message');
       setIsLoading(true);
+
       const response = await fetch('/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           message,
           session_id: sessionId.current,
@@ -127,6 +149,7 @@ const ChatContainer = () => {
         credentials: 'include'
       });
 
+      console.log('Chat response:', response);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -137,53 +160,37 @@ const ChatContainer = () => {
       addDebugMessage('Response Payload:', responseData);
 
       // Start polling if we have a ServiceNow request ID
-      if (responseData.servicenow_response?.requestId) {
-        const requestId = responseData.servicenow_response.requestId;
-        addDebugMessage('Starting polling for request:', requestId);
-
-        const origin = window.location.origin;
-        const pollUrl = `${origin}/servicenow/responses/${requestId}`;
-        addDebugMessage('Polling URL:', pollUrl);
-
-        setIsPolling(true);
-        let attempts = 0;
-        const maxAttempts = 60;
-
+      if (responseData.request_id) {
+        console.log('Starting polling for request:', responseData.request_id);
+        let pollCount = 0;
+        const maxPolls = 30; // Maximum number of polling attempts
+        
         const pollInterval = setInterval(async () => {
-          if (!isPolling) {
-            addDebugMessage('Polling stopped: isPolling is false');
-            clearInterval(pollInterval);
-            return;
-          }
-
-          if (attempts >= maxAttempts) {
-            addDebugMessage('Polling stopped: max attempts reached');
-            clearInterval(pollInterval);
-            setIsPolling(false);
-            addMessage('No more responses from ServiceNow', 'bot-message system-message');
-            return;
-          }
-
-          attempts++;
-          addDebugMessage(`Polling attempt ${attempts}/${maxAttempts} for request ${requestId}`);
-
           try {
-            addDebugMessage('Sending poll request to:', pollUrl);
-            const pollResponse = await fetch(pollUrl, {
+            console.log(`Polling attempt ${pollCount + 1} for request ${responseData.request_id}`);
+            const pollResponse = await fetch(`/servicenow/responses/${responseData.request_id}`, {
               method: 'GET',
-              headers: { 'Content-Type': 'application/json' },
               credentials: 'include'
             });
 
             await handlePollResponse(pollResponse);
+            pollCount++;
+
+            if (pollCount >= maxPolls) {
+              console.log(`Reached maximum poll attempts (${maxPolls}) for request ${responseData.request_id}`);
+              clearInterval(pollInterval);
+              setIsLoading(false);
+            }
           } catch (error) {
             console.error('Error during polling:', error);
             addDebugMessage('Polling error:', error.message);
+            clearInterval(pollInterval);
+            setIsLoading(false);
           }
         }, 1000);
-      } else if (responseData.response) {
-        // Handle GPT-only response
-        addMessage(responseData.response, 'bot-message');
+      } else {
+        console.log('No request_id in response, skipping polling');
+        setIsLoading(false);
       }
     } catch (error) {
       console.error('Error:', error);

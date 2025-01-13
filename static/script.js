@@ -378,7 +378,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (apiToggle.checked) {
                 iconDiv.innerHTML = '<img src="/static/servicenow-icon.png" alt="ServiceNow" width="24" height="24">';
             } else {
-                iconDiv.innerHTML = '<img src="/static/openai-icon.png" alt="OpenAI" width="24" height="24">';
+                iconDiv.innerHTML = '<img src="/static/openai.png" alt="OpenAI" width="24" height="24">';
             }
             messageDiv.appendChild(iconDiv);
         }

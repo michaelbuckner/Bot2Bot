@@ -334,7 +334,7 @@ async def servicenow_callback(
                         continue
                         
                     # Keep OutputCard and Picker messages
-                    if msg.get('uiType') in ['OutputCard', 'Picker']:
+                    if msg.get('uiType') in ['OutputCard', 'Picker', 'OutputText']:
                         content_messages.append(msg)
 
                 if content_messages:
@@ -402,7 +402,7 @@ async def get_servicenow_responses(
     logger.info("Found %d responses for request %s", len(responses), request_id)
     
     # Filter out spinner messages
-    content_messages = [msg for msg in responses if msg.get("uiType") in ["OutputCard", "Picker"]]
+    content_messages = [msg for msg in responses if msg.get("uiType") in ["OutputCard", "Picker", "OutputText"]]
     logger.info("Filtered to %d content messages", len(content_messages))
     
     # Only remove from pending_responses if explicitly acknowledged
@@ -415,10 +415,9 @@ async def get_servicenow_responses(
                request_id, json.dumps(content_messages, indent=2))
     
     return {
-        "servicenow_response": {
-            "status": "success",
-            "body": content_messages
-        }
+        "status": "success",
+        "messages": content_messages,
+        "done": acknowledge
     }
 
 @app.get("/debug/pending_responses")

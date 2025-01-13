@@ -292,113 +292,68 @@ async def servicenow_callback(
     request: Request,
     credentials: HTTPBasicCredentials = Depends(security)
 ):
+    """Handle callbacks from ServiceNow."""
+    logger.info("=== ServiceNow Callback Received ===")
+    logger.info("Headers: %s", dict(request.headers))
+    
+    logger.info("Attempting to verify credentials: %s", credentials.username)
+    verify_callback_credentials(credentials)
+    logger.info("Credentials verified successfully")
+    
+    # Get raw request body
+    raw_body = await request.body()
+    logger.info("Raw callback body: %s", raw_body.decode())
+    
+    # Parse JSON
     try:
-        logger.info("=== ServiceNow Callback Received ===")
-        logger.info("Headers: %s", dict(request.headers))
-        
-        # Log auth attempt before verification
-        logger.info("Attempting to verify credentials: %s", credentials.username)
-        verify_callback_credentials(credentials)
-        logger.info("Credentials verified successfully")
-        
-        # Get raw request body
-        raw_body = await request.body()
-        logger.info("Raw callback body: %s", raw_body.decode())
-        
-        # Parse JSON
-        try:
-            body = json.loads(raw_body)
-        except json.JSONDecodeError as e:
-            logger.error("Failed to parse callback JSON: %s", str(e))
-            raise HTTPException(status_code=400, detail="Invalid JSON")
+        body = json.loads(raw_body)
+    except json.JSONDecodeError as e:
+        logger.error("Failed to parse callback JSON: %s", str(e))
+        raise HTTPException(status_code=400, detail="Invalid JSON")
 
-        try:
-            callback = ServiceNowCallback(**body)
-            
-            # Extract request ID from the callback
-            request_id = callback.requestId
-            if not request_id:
-                logger.warning("No requestId in callback")
-                return {"status": "error", "message": "No requestId in callback"}
+    try:
+        callback = ServiceNowCallback(**body)
+        
+        # Extract request ID from the callback
+        request_id = callback.requestId
+        if not request_id:
+            logger.warning("No requestId in callback")
+            return {"status": "error", "message": "No requestId in callback"}
 
-            logger.info("Processing callback for requestId: %s", request_id)
-            
-            # Process the callback body
-            if callback.body:
-                if isinstance(callback.body, list):
-                    # Filter out spinner/action messages
-                    content_messages = []
-                    for msg in callback.body:
-                        if not isinstance(msg, dict):
-                            continue
-                        
-                        # Keep OutputCard and Picker messages
-                        if msg.get('uiType') == 'ActionMsg':
-                            if msg.get('actionType') == 'System':
-                                content_messages.append({
-                                    'uiType': 'OutputText',
-                                    'value': msg.get('message', '')
-                                })
-                        elif msg.get('uiType') in ['OutputCard', 'Picker', 'OutputText']:
-                            content_messages.append(msg)
-
-                    if content_messages:
-                        logger.info("Storing %d content messages for request %s", 
-                                  len(content_messages), request_id)
-                        
-                        # Store only content messages
-                        if request_id in pending_responses:
-                            # Get existing non-spinner messages
-                            existing_messages = [
-                                msg for msg in pending_responses[request_id]
-                                if isinstance(msg, dict) and msg.get('uiType') != 'ActionMsg'
-                            ]
-                            # Add new content messages
-                            pending_responses[request_id] = existing_messages + content_messages
-                        else:
-                            pending_responses[request_id] = content_messages
-                        
-                        logger.info("Updated messages for request %s: %s", 
-                                  request_id, json.dumps(pending_responses[request_id], indent=2))
+        logger.info("Processing callback for requestId: %s", request_id)
+        
+        # Process the callback body
+        if callback.body:
+            if isinstance(callback.body, list):
+                # Store all messages, including spinners
+                if request_id in pending_responses:
+                    pending_responses[request_id].extend(callback.body)
                 else:
-                    # If body is not a list, wrap it in a list
-                    logger.warning("Callback body is not a list, wrapping it: %s", callback.body)
-                    pending_responses[request_id] = [{
-                        "uiType": "OutputText",
-                        "value": str(callback.body)
-                    }]
+                    pending_responses[request_id] = callback.body
                     
-            return {"status": "success"}
-        except Exception as e:
-            logger.error("Error processing ServiceNow callback: %s", str(e), exc_info=True)
-            raise HTTPException(status_code=400, detail=f"Error processing callback: {str(e)}")
-
+                logger.info("Updated messages for request %s: %s", 
+                          request_id, json.dumps(pending_responses[request_id], indent=2))
+            else:
+                # If body is not a list, wrap it in a list
+                logger.warning("Callback body is not a list, wrapping it: %s", callback.body)
+                pending_responses[request_id] = [callback.body]
+                
+        return {"status": "success"}
     except Exception as e:
-        logger.error("Error in callback endpoint: %s", str(e), exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error processing ServiceNow callback: %s", str(e), exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Error processing callback: {str(e)}")
 
 @app.get("/servicenow/responses/{request_id}")
 async def get_servicenow_responses(
     request_id: str,
-    request: Request,
     acknowledge: bool = False,
     user: Optional[User] = Depends(get_current_user)
 ):
     """Get responses for a specific request ID."""
-    
-    logger.info("=== Polling request received ===")
-    logger.info("Request ID: %s", request_id)
-    logger.info("User: %s", user)
-    logger.info("Acknowledge: %s", acknowledge)
-    logger.info("Current pending_responses keys: %s", list(pending_responses.keys()))
-    
     if not user:
-        logger.warning("Unauthorized polling request")
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     if request_id not in pending_responses:
-        logger.warning("No responses found for request %s", request_id)
-        logger.info("Available request IDs: %s", list(pending_responses.keys()))
         return {
             "servicenow_response": {
                 "status": "success",
@@ -408,32 +363,43 @@ async def get_servicenow_responses(
     
     # Get the responses
     responses = pending_responses[request_id]
-    logger.info("Found %d responses for request %s", len(responses), request_id)
     
-    # Filter out spinner messages
-    content_messages = []
-    for msg in responses:
-        if msg.get('uiType') == 'ActionMsg':
-            if msg.get('actionType') == 'System':
-                content_messages.append({
-                    'uiType': 'OutputText',
-                    'value': msg.get('message', '')
-                })
-        elif msg.get('uiType') in ['OutputCard', 'Picker', 'OutputText']:
-            content_messages.append(msg)
-
-    logger.info("Filtered response messages: %s", json.dumps(content_messages, indent=2))
-    
-    # Only remove from pending_responses if explicitly acknowledged
-    if acknowledge and content_messages:
+    # If acknowledging, remove from pending responses
+    if acknowledge:
         del pending_responses[request_id]
-        logger.info("Removed request %s from pending_responses after acknowledgment", request_id)
-        logger.info("Remaining request IDs: %s", list(pending_responses.keys()))
+        logger.info("Removed acknowledged messages for request %s", request_id)
     
     return {
         "servicenow_response": {
             "status": "success",
-            "body": content_messages
+            "body": responses
+        }
+    }
+
+@app.get("/poll/{request_id}")
+async def poll_request(request_id: str, acknowledge: bool = False):
+    logging.info(f"Polling for request {request_id}")
+    
+    if request_id in pending_responses:
+        messages = pending_responses[request_id]
+        if acknowledge:
+            logging.info(f"Acknowledging and removing messages for request {request_id}")
+            del pending_responses[request_id]
+            return {"status": "acknowledged"}
+            
+        if messages:
+            logging.info(f"Returning {len(messages)} messages for request {request_id}")
+            return {
+                "servicenow_response": {
+                    "status": "success",
+                    "body": messages
+                }
+            }
+    
+    return {
+        "servicenow_response": {
+            "status": "pending",
+            "body": []
         }
     }
 

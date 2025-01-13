@@ -16,6 +16,7 @@ const ChatContainer = () => {
   const sessionId = useRef(Math.random().toString(36).substring(7));
   const [isPolling, setIsPolling] = useState(false);
   const pollIntervalRef = useRef(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
@@ -87,11 +88,20 @@ const ChatContainer = () => {
       }
 
       if (isServiceNow) {
-        if (data.servicenow_response?.requestId) {
+        if (data.servicenow_response && data.servicenow_response.requestId) {
           const requestId = data.servicenow_response.requestId;
           let attempts = 0;
           const maxAttempts = 30;
 
+          if (isDebug) {
+            addDebugMessage('Starting polling for request:', requestId);
+          }
+          
+          const pollUrl = `${window.location.origin}/servicenow/responses/${requestId}`;
+          if (isDebug) {
+            addDebugMessage('Polling URL:', pollUrl);
+          }
+          
           const pollInterval = setInterval(async () => {
             if (!isPolling) {
               clearInterval(pollInterval);
@@ -114,7 +124,6 @@ const ChatContainer = () => {
                 addDebugMessage(`Polling attempt ${attempts}/${maxAttempts} for request ${requestId}`);
               }
 
-              const pollUrl = `${origin}/servicenow/responses/${requestId}`;
               const pollResponse = await fetch(pollUrl, {
                 method: 'GET',
                 headers: {
@@ -137,22 +146,29 @@ const ChatContainer = () => {
                 const messages = pollData.servicenow_response.body;
                 if (messages && messages.length > 0) {
                   messages.forEach(msg => {
-                    if (msg.uiType === 'OutputCard') {
+                    if (msg.uiType === 'ActionMsg') {
+                      // Handle spinner messages
+                      if (msg.actionType === 'StartSpinner') {
+                        setIsLoading(true);
+                      } else if (msg.actionType === 'EndSpinner') {
+                        setIsLoading(false);
+                      }
+                    } else if (msg.uiType === 'OutputCard') {
                       try {
                         const cardData = JSON.parse(msg.data);
                         if (isDebug) {
                           addDebugMessage('Parsed card data:', cardData);
                         }
                         // Extract and display the main content from the card
-                        const content = cardData.fields?.find(f => f.fieldLabel === 'Top Result:')?.fieldValue || 
-                                      JSON.stringify(cardData);
-                        addMessage(content, 'bot-message');
+                        const content = cardData.fields?.find(f => f.fieldLabel === 'Top Result:')?.fieldValue;
+                        if (content) {
+                          addMessage(content, 'bot-message');
+                        }
                       } catch (e) {
                         console.error('Error parsing card data:', e);
                         if (isDebug) {
                           addDebugMessage('Error parsing card:', e.message);
                         }
-                        addMessage(JSON.stringify(msg), 'bot-message');
                       }
                     } else if (msg.uiType === 'OutputText') {
                       addMessage(msg.value || msg.text, 'bot-message');
@@ -245,7 +261,7 @@ const ChatContainer = () => {
         setIsDebug={setIsDebug}
         onLogout={handleLogout}
       />
-      <ChatMessages messages={messages} />
+      <ChatMessages messages={messages} isLoading={isLoading} />
       <ConversationStarters onSelect={handleSendMessage} />
       <ChatInput onSendMessage={handleSendMessage} />
     </div>

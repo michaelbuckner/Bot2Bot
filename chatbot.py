@@ -275,27 +275,64 @@ class ChatbotAPI:
         """Get stored messages for a request."""
         return self.message_store.get(request_id, [])
 
-    def process_servicenow_callback(self, callback_data: dict) -> List[dict]:
+    def process_servicenow_callback(self, callback_data) -> List[dict]:
         """Process a callback from ServiceNow and return formatted messages."""
-        request_id = callback_data.get('requestId')
+        request_id = callback_data.requestId  # Access Pydantic model field directly
         messages = []
 
-        for msg in callback_data.get('body', []):
+        for msg in callback_data.body:  # Access body field directly
             self.logger.info(f"Processing message: {json.dumps(msg, indent=2)}")
             
-            if msg['uiType'] == 'ActionMsg':
-                messages.append(msg)
-            elif msg['uiType'] == 'OutputCard':
+            # Convert to dict to ensure consistent access
+            msg_dict = msg if isinstance(msg, dict) else msg.dict()
+            
+            if msg_dict['uiType'] == 'ActionMsg':
+                messages.append(msg_dict)
+            elif msg_dict['uiType'] == 'OutputCard':
                 # Clear previous messages when we get content
-                messages = [msg]
-            elif msg['uiType'] == 'Picker':
+                messages = [msg_dict]
+            elif msg_dict['uiType'] == 'Picker':
                 if not any(m['uiType'] == 'Picker' for m in messages):
-                    messages.append(msg)
+                    messages.append(msg_dict)
 
         self.logger.info(f"Added {len(messages)} formatted messages")
         return self.store_messages(request_id, messages)
 
 chatbot_api = ChatbotAPI()
+
+class ServiceNowCallback(BaseModel):
+    requestId: str | None = None
+    body: list | dict | None = None
+    clientSessionId: str | None = None
+    message: dict | None = None
+
+    class Config:
+        extra = "allow"
+
+@app.post("/servicenow/callback")
+async def servicenow_callback(callback: ServiceNowCallback):
+    """Handle callbacks from ServiceNow."""
+    try:
+        logger.info("=== ServiceNow Callback Received ===")
+        logger.info(f"Raw callback body: {callback.model_dump_json()}")
+        logger.info(f"Parsed callback body: {json.dumps(json.loads(callback.model_dump_json()), indent=2)}")
+        logger.info(f"Callback object: {callback}")
+        
+        logger.info(f"Processing callback for requestId: {callback.requestId}")
+        formatted_messages = chatbot_api.process_servicenow_callback(callback)
+        logger.info(f"Formatted messages: {json.dumps(formatted_messages, indent=2)}")
+        
+        # Store the formatted messages
+        if formatted_messages:
+            logger.info(f"Storing {len(formatted_messages)} formatted messages for request {callback.requestId}")
+            pending_responses[callback.requestId] = formatted_messages
+            logger.info(f"Stored messages: {json.dumps(formatted_messages, indent=2)}")
+        
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Error processing ServiceNow callback: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=400, detail=str(e))
 
 def get_gpt_response(message: str) -> str:
     try:
@@ -351,111 +388,7 @@ async def chat(
         logger.error("Error in chat endpoint: %s", str(e), exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-class ServiceNowCallback(BaseModel):
-    requestId: str | None = None
-    body: list | dict | None = None
-    clientSessionId: str | None = None
-    message: dict | None = None
-
-    class Config:
-        extra = "allow"
-
-class AsyncResponse(BaseModel):
-    request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    status: str
-    message: str
-
-security = HTTPBasic()
-
-def verify_callback_credentials(credentials: HTTPBasicCredentials):
-    correct_username = os.getenv("CALLBACK_USERNAME")
-    correct_password = os.getenv("CALLBACK_PASSWORD")
-    
-    if not (credentials.username == correct_username and 
-            credentials.password == correct_password):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid credentials",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return True
-
 pending_responses = {}
-
-@app.post("/servicenow/callback")
-async def servicenow_callback(
-    request: Request,
-    credentials: HTTPBasicCredentials = Depends(security)
-):
-    """Handle callbacks from ServiceNow."""
-    verify_callback_credentials(credentials)
-    
-    # Get raw request body
-    raw_body = await request.body()
-    logger.info("=== ServiceNow Callback Received ===")
-    logger.info("Raw callback body: %s", raw_body.decode())
-    
-    # Parse JSON
-    try:
-        body = json.loads(raw_body)
-        logger.info("Parsed callback body: %s", json.dumps(body, indent=2))
-    except json.JSONDecodeError as e:
-        logger.error("Failed to parse callback JSON: %s", str(e))
-        raise HTTPException(status_code=400, detail="Invalid JSON")
-
-    try:
-        callback = ServiceNowCallback(**body)
-        logger.info("Callback object: %s", callback)
-        
-        # Extract request ID from the callback
-        request_id = callback.requestId
-        if not request_id:
-            logger.warning("No requestId in callback")
-            return {"status": "error", "message": "No requestId in callback"}
-
-        logger.info("Processing callback for requestId: %s", request_id)
-        
-        # Process the callback body
-        if callback.body:
-            if isinstance(callback.body, list):
-                # Convert messages to the expected format
-                formatted_messages = chatbot_api.process_servicenow_callback(callback)
-                logger.info("Formatted messages: %s", json.dumps(formatted_messages, indent=2))
-                
-                # Store the formatted messages
-                if formatted_messages:
-                    logger.info("Storing %d formatted messages for request %s", 
-                              len(formatted_messages), request_id)
-                    pending_responses[request_id] = formatted_messages
-                    logger.info("Stored messages: %s",
-                              json.dumps(formatted_messages, indent=2))
-                
-            else:
-                # If body is not a list, convert it to an OutputCard
-                logger.warning("Callback body is not a list, converting to OutputCard: %s", callback.body)
-                message_text = str(callback.body)
-                formatted_msg = {
-                    "uiType": "OutputCard",
-                    "group": "DefaultOutputCard",
-                    "templateName": "Card",
-                    "data": json.dumps({
-                        "title": "ServiceNow Response",
-                        "fields": [
-                            {
-                                "fieldLabel": "Top Result:",
-                                "fieldValue": message_text
-                            }
-                        ]
-                    })
-                }
-                pending_responses[request_id] = [formatted_msg]
-                logger.info("Stored single message for request %s: %s", 
-                          request_id, json.dumps(formatted_msg, indent=2))
-                
-        return {"status": "success"}
-    except Exception as e:
-        logger.error("Error processing ServiceNow callback: %s", str(e), exc_info=True)
-        raise HTTPException(status_code=400, detail=f"Error processing callback: {str(e)}")
 
 @app.get("/servicenow/responses/{request_id}")
 async def get_servicenow_responses(request_id: str, acknowledge: bool = False, user: Optional[User] = Depends(get_current_user)):

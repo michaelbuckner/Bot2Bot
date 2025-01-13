@@ -289,43 +289,109 @@ def verify_callback_credentials(credentials: HTTPBasicCredentials):
 pending_responses = {}
 
 @app.post("/servicenow/callback")
-async def servicenow_callback(request: Request, credentials: HTTPBasicCredentials = Depends(security)):
-    """Handle callbacks from ServiceNow."""
-    logger.info("=== ServiceNow Callback Received ===")
-    logger.info(f"Headers: {request.headers}")
-    
-    # Verify credentials
-    logger.info("Attempting to verify credentials: %s", credentials.username)
+async def servicenow_callback(
+    request: Request,
+    credentials: HTTPBasicCredentials = Depends(security)
+):
     verify_callback_credentials(credentials)
-    logger.info("Credentials verified successfully")
     
-    # Get the callback data
-    callback_data = await request.json()
-    logger.info("Raw callback body: %s", json.dumps(callback_data))
+    # Get raw request body
+    raw_body = await request.body()
+    logger.info("Raw callback body: %s", raw_body.decode())
     
-    # Parse the callback data
-    callback = ServiceNowCallback(**callback_data)
-    request_id = callback.requestId
-    
-    if not request_id:
-        raise HTTPException(status_code=400, detail="Missing requestId")
-    
-    logger.info("Processing callback for requestId: %s", request_id)
-    
-    # Store the response
-    if request_id not in pending_responses:
-        pending_responses[request_id] = []
+    # Parse JSON
+    try:
+        body = json.loads(raw_body)
+    except json.JSONDecodeError as e:
+        logger.error("Failed to parse callback JSON: %s", str(e))
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    try:
+        callback = ServiceNowCallback(**body)
         
-    # Add the new messages to the list
-    if callback.body:
-        if isinstance(callback.body, list):
-            pending_responses[request_id].extend(callback.body)
-        else:
-            pending_responses[request_id].append(callback.body)
-            
-    logger.info("Updated messages for request %s: %s", request_id, json.dumps(pending_responses[request_id], indent=2))
-    
-    return {"status": "success"}
+        # Extract request ID from the callback
+        request_id = callback.requestId
+        if not request_id:
+            logger.warning("No requestId in callback")
+            return {"status": "error", "message": "No requestId in callback"}
+
+        logger.info("Processing callback for requestId: %s", request_id)
+        
+        # Process the callback body
+        if callback.body:
+            if isinstance(callback.body, list):
+                # Convert messages to the expected format
+                formatted_messages = []
+                for msg in callback.body:
+                    if not isinstance(msg, dict):
+                        continue
+
+                    # Handle different message types
+                    if msg.get('uiType') == 'ActionMsg':
+                        # Pass through action messages unchanged
+                        formatted_messages.append(msg)
+                    elif msg.get('uiType') == 'OutputCard':
+                        # Pass through output cards unchanged
+                        formatted_messages.append(msg)
+                    elif msg.get('uiType') == 'Picker':
+                        # Pass through picker messages unchanged
+                        formatted_messages.append(msg)
+                    else:
+                        # Convert unknown message types to OutputCard format
+                        message_text = msg.get('text') or msg.get('message') or str(msg)
+                        formatted_messages.append({
+                            "uiType": "OutputCard",
+                            "group": "DefaultOutputCard",
+                            "templateName": "Card",
+                            "data": json.dumps({
+                                "title": "ServiceNow Response",
+                                "fields": [
+                                    {
+                                        "fieldLabel": "Top Result:",
+                                        "fieldValue": message_text
+                                    }
+                                ]
+                            })
+                        })
+
+                if formatted_messages:
+                    logger.info("Storing %d formatted messages for request %s", 
+                              len(formatted_messages), request_id)
+                    
+                    # Store formatted messages
+                    if request_id in pending_responses:
+                        # Get existing messages
+                        existing_messages = pending_responses[request_id]
+                        # Add new messages
+                        pending_responses[request_id] = existing_messages + formatted_messages
+                    else:
+                        pending_responses[request_id] = formatted_messages
+                        
+                    logger.info("Updated messages for request %s: %s", 
+                              request_id, json.dumps(pending_responses[request_id], indent=2))
+            else:
+                # If body is not a list, convert it to an OutputCard
+                logger.warning("Callback body is not a list, converting to OutputCard: %s", callback.body)
+                message_text = str(callback.body)
+                pending_responses[request_id] = [{
+                    "uiType": "OutputCard",
+                    "group": "DefaultOutputCard",
+                    "templateName": "Card",
+                    "data": json.dumps({
+                        "title": "ServiceNow Response",
+                        "fields": [
+                            {
+                                "fieldLabel": "Top Result:",
+                                "fieldValue": message_text
+                            }
+                        ]
+                    })
+                }]
+                
+        return {"status": "success"}
+    except Exception as e:
+        logger.error("Error processing ServiceNow callback: %s", str(e), exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Error processing callback: {str(e)}")
 
 @app.get("/servicenow/responses/{request_id}")
 async def get_servicenow_responses(request_id: str, acknowledge: bool = False, user: Optional[User] = Depends(get_current_user)):

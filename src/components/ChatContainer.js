@@ -69,9 +69,13 @@ const ChatContainer = () => {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const responseData = await response.json();
+      const rawText = await response.text();
       if (isDebug) {
-        addDebugMessage('Raw response text:', await response.clone().text());
+        addDebugMessage('Raw response text:', rawText);
+      }
+
+      const responseData = JSON.parse(rawText);
+      if (isDebug) {
         addDebugMessage('Response Payload:', responseData);
       }
 
@@ -123,9 +127,14 @@ const ChatContainer = () => {
               throw new Error(`Poll failed: ${pollResponse.status}`);
             }
 
-            const pollData = await pollResponse.json();
+            const pollText = await pollResponse.text();
             if (isDebug) {
-              addDebugMessage('Poll Response:', pollData);
+              addDebugMessage('Poll Response Text:', pollText);
+            }
+
+            const pollData = JSON.parse(pollText);
+            if (isDebug) {
+              addDebugMessage('Poll Response Data:', pollData);
               addDebugMessage('Response body:', pollData.servicenow_response?.body || 'No body');
             }
 
@@ -269,7 +278,6 @@ const ChatContainer = () => {
       }
     } catch (error) {
       console.error('Error:', error);
-      addMessage(error.message || 'Error processing your message', 'bot-message error-message');
       if (isDebug) {
         addDebugMessage('Error:', error);
       }

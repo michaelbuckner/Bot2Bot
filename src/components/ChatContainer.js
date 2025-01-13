@@ -46,24 +46,21 @@ const ChatContainer = () => {
   const handleSendMessage = async (message) => {
     if (!message.trim()) return;
 
+    // Add user message to chat
     addMessage(message, 'user-message');
 
     try {
       const requestPayload = {
-        message,
+        message: message,
         session_id: sessionId.current,
         use_servicenow: isServiceNow
       };
 
-      const origin = window.location.origin;
-      const chatUrl = `${origin}/chat`;
-
       if (isDebug) {
         addDebugMessage('Request Payload:', requestPayload);
-        addDebugMessage('Chat URL:', chatUrl);
       }
 
-      const response = await fetch(chatUrl, {
+      const response = await fetch(`${window.location.origin}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -82,7 +79,6 @@ const ChatContainer = () => {
       }
 
       const data = JSON.parse(rawText);
-
       if (isDebug) {
         addDebugMessage('Response Payload:', data);
       }
@@ -92,6 +88,7 @@ const ChatContainer = () => {
           const requestId = data.servicenow_response.requestId;
           let attempts = 0;
           const maxAttempts = 30;
+          setIsPolling(true);
 
           if (isDebug) {
             addDebugMessage('Starting polling for request:', requestId);
@@ -108,22 +105,22 @@ const ChatContainer = () => {
               return;
             }
 
-            try {
-              if (attempts >= maxAttempts) {
-                setIsPolling(false);
-                clearInterval(pollInterval);
-                addMessage('No more responses from ServiceNow', 'bot-message system-message');
-                if (isDebug) {
-                  addDebugMessage('Polling timed out after', maxAttempts, 'attempts');
-                }
-                return;
-              }
-
-              attempts++;
+            if (attempts >= maxAttempts) {
+              clearInterval(pollInterval);
+              setIsPolling(false);
+              addMessage('No more responses from ServiceNow', 'bot-message system-message');
               if (isDebug) {
-                addDebugMessage(`Polling attempt ${attempts}/${maxAttempts} for request ${requestId}`);
+                addDebugMessage('Polling timed out');
               }
+              return;
+            }
 
+            attempts++;
+            if (isDebug) {
+              addDebugMessage(`Polling attempt ${attempts}/${maxAttempts} for request ${requestId}`);
+            }
+
+            try {
               const pollResponse = await fetch(pollUrl, {
                 method: 'GET',
                 headers: {
@@ -133,69 +130,83 @@ const ChatContainer = () => {
               });
 
               if (!pollResponse.ok) {
-                throw new Error(`Poll failed: ${pollResponse.status} ${pollResponse.statusText}`);
+                throw new Error(`Poll failed: ${pollResponse.status}`);
               }
 
               const pollData = await pollResponse.json();
-              
               if (isDebug) {
-                addDebugMessage('Poll response:', pollData);
+                addDebugMessage('Poll Response:', pollData);
               }
-              
+
               if (pollData.servicenow_response && pollData.servicenow_response.body) {
                 const messages = pollData.servicenow_response.body;
-                if (messages && messages.length > 0) {
-                  messages.forEach(msg => {
-                    if (msg.uiType === 'ActionMsg') {
-                      // Handle spinner messages
-                      if (msg.actionType === 'StartSpinner') {
-                        setIsLoading(true);
-                      } else if (msg.actionType === 'EndSpinner') {
-                        setIsLoading(false);
-                      }
-                    } else if (msg.uiType === 'OutputCard') {
-                      try {
-                        const cardData = JSON.parse(msg.data);
-                        if (isDebug) {
-                          addDebugMessage('Parsed card data:', cardData);
-                        }
-                        // Extract and display the main content from the card
-                        const content = cardData.fields?.find(f => f.fieldLabel === 'Top Result:')?.fieldValue;
-                        if (content) {
-                          addMessage(content, 'bot-message');
-                        }
-                      } catch (e) {
-                        console.error('Error parsing card data:', e);
-                        if (isDebug) {
-                          addDebugMessage('Error parsing card:', e.message);
-                        }
-                      }
-                    } else if (msg.uiType === 'OutputText') {
-                      addMessage(msg.value || msg.text, 'bot-message');
-                    } else if (msg.uiType === 'Picker') {
-                      // Add picker options as a system message
-                      addMessage(msg.label, 'bot-message system-message');
-                      msg.options.forEach(option => {
-                        addMessage(`- ${option.label}`, 'bot-message system-message');
-                      });
+                let hasContent = false;
+
+                for (const msg of messages) {
+                  if (msg.uiType === 'ActionMsg') {
+                    // Handle spinner messages
+                    if (msg.actionType === 'StartSpinner') {
+                      setIsLoading(true);
+                    } else if (msg.actionType === 'EndSpinner') {
+                      setIsLoading(false);
                     }
-                  });
-                  
-                  // After successfully processing messages, acknowledge them
-                  try {
-                    const ackUrl = `${pollUrl}?acknowledge=true`;
+                  } else if (msg.uiType === 'OutputCard') {
+                    try {
+                      const cardData = JSON.parse(msg.data);
+                      if (isDebug) {
+                        addDebugMessage('Card data:', cardData);
+                      }
+                      
+                      // Process each field
+                      for (const field of cardData.fields) {
+                        if (field.fieldLabel === 'Top Result:') {
+                          hasContent = true;
+                          addMessage(field.fieldValue, 'bot-message');
+                          if (isDebug) {
+                            addDebugMessage('Added message:', field.fieldValue);
+                          }
+                        } else if (field.fieldLabel.includes('KB')) {
+                          // Add KB article link
+                          const linkMessage = `Learn more: ${field.fieldValue}`;
+                          addMessage(linkMessage, 'bot-message link-message');
+                          if (isDebug) {
+                            addDebugMessage('Added link:', linkMessage);
+                          }
+                        }
+                      }
+                    } catch (e) {
+                      console.error('Failed to parse card data:', e);
+                      if (isDebug) {
+                        addDebugMessage('Error parsing card:', e);
+                      }
+                    }
+                  } else if (msg.uiType === 'Picker') {
+                    hasContent = true;
+                    const pickerMessage = `${msg.label}\n${msg.options.map((opt, i) => `${i + 1}. ${opt.label}`).join('\n')}`;
+                    addMessage(pickerMessage, 'bot-message picker-message');
                     if (isDebug) {
-                      addDebugMessage('Acknowledging messages:', ackUrl);
+                      addDebugMessage('Added picker:', pickerMessage);
                     }
-                    await fetch(ackUrl, {
+                  }
+                }
+
+                if (hasContent) {
+                  // Acknowledge messages
+                  try {
+                    const ackResponse = await fetch(`${pollUrl}?acknowledge=true`, {
                       method: 'GET',
                       headers: {
                         'Content-Type': 'application/json',
                       },
                       credentials: 'include'
                     });
-                    if (isDebug) {
-                      addDebugMessage('Messages acknowledged successfully');
+                    
+                    if (!ackResponse.ok) {
+                      if (isDebug) {
+                        addDebugMessage('Failed to acknowledge messages:', ackResponse.status);
+                      }
+                    } else if (isDebug) {
+                      addDebugMessage('Messages acknowledged');
                     }
                   } catch (e) {
                     if (isDebug) {
@@ -204,31 +215,38 @@ const ChatContainer = () => {
                   }
                   
                   clearInterval(pollInterval);
+                  setIsPolling(false);
                   if (isDebug) {
                     addDebugMessage('Polling complete');
                   }
+                  return;
                 }
               }
             } catch (error) {
-              console.error('Polling error:', error);
+              console.error('Error during polling:', error);
               if (isDebug) {
-                addDebugMessage('Polling error:', error.message);
+                addDebugMessage('Polling error:', error);
               }
-              setIsPolling(false);
-              clearInterval(pollInterval);
             }
           }, 1000);
-          pollIntervalRef.current = pollInterval;
-          setIsPolling(true);
+        } else {
+          if (isDebug) {
+            addDebugMessage('No requestId in response:', data);
+          }
+          addMessage('Error: No request ID received', 'bot-message error-message');
         }
       } else {
+        // Handle GPT response
         if (data.response) {
           addMessage(data.response, 'bot-message');
         }
       }
     } catch (error) {
       console.error('Error:', error);
-      addMessage(`Error: ${error.message}`, 'error-message');
+      addMessage(error.message || 'Error processing your message', 'bot-message error-message');
+      if (isDebug) {
+        addDebugMessage('Error:', error);
+      }
     }
   };
 

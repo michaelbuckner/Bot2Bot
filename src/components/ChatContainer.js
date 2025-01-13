@@ -85,8 +85,12 @@ const ChatContainer = () => {
         if (isDebug) addDebugMessage('Starting polling for request:', requestId);
 
         // Set up polling
-        const pollUrl = `/poll/${requestId}`;
-        if (isDebug) addDebugMessage('Polling URL:', pollUrl);
+        const origin = window.location.origin;
+        const pollUrl = `${origin}/servicenow/responses/${requestId}`;
+        
+        if (isDebug) {
+          addDebugMessage('Polling URL:', pollUrl);
+        }
 
         setIsPolling(true);
         let attempts = 0;
@@ -118,9 +122,8 @@ const ChatContainer = () => {
               method: 'GET',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
               },
-              credentials: 'include'
+              credentials: 'include'  // Include cookies for authentication
             });
 
             if (!pollResponse.ok) {
@@ -243,7 +246,6 @@ const ChatContainer = () => {
                     method: 'GET',
                     headers: {
                       'Content-Type': 'application/json',
-                      'Authorization': `Bearer ${localStorage.getItem('token')}`
                     },
                     credentials: 'include'
                   });

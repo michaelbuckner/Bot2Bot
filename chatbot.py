@@ -292,7 +292,11 @@ async def servicenow_callback(
     request: Request,
     credentials: HTTPBasicCredentials = Depends(security)
 ):
+    logger.info("=== ServiceNow Callback Received ===")
+    logger.info("Headers: %s", dict(request.headers))
+    
     verify_callback_credentials(credentials)
+    logger.info("Credentials verified successfully")
     
     # Get raw request body
     raw_body = await request.body()

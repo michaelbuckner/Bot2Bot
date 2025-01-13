@@ -114,9 +114,11 @@ const ChatContainer = () => {
               
               if (pollData.messages && pollData.messages.length > 0) {
                 pollData.messages.forEach(msg => {
-                  addMessage(msg, 'bot-message');
+                    if (msg.uiType === 'OutputCard' || msg.uiType === 'OutputText') {
+                        addMessage(msg.value || msg.text || JSON.stringify(msg), 'bot-message');
+                    }
                 });
-              }
+            }
 
               if (pollData.done) {
                 clearInterval(pollInterval);

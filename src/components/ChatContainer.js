@@ -152,10 +152,12 @@ const ChatContainer = () => {
                       case 'StartSpinner':
                         hasSpinner = true;
                         setIsLoading(true);
+                        addMessage('Loading...', 'bot-message spinner-message');
                         break;
                       case 'EndSpinner':
                         hasSpinner = true;
                         setIsLoading(false);
+                        addMessage('Loaded', 'bot-message spinner-message');
                         break;
                       case 'System':
                         hasContent = true;

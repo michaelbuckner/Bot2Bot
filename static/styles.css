@@ -377,3 +377,46 @@ input:checked + .slider:before {
     color: white;
     border-color: var(--primary-color);
 }
+
+.bot-message.spinner-message {
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.loading-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+}
+
+.spinner-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.spinner-dots div {
+  width: 8px;
+  height: 8px;
+  background-color: var(--message-bot-text);
+  border-radius: 50%;
+  animation: bounce 1.4s infinite ease-in-out both;
+}
+
+.spinner-dots div:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.spinner-dots div:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes bounce {
+  0%, 80%, 100% { 
+    transform: scale(0);
+  } 
+  40% { 
+    transform: scale(1.0);
+  }
+}

@@ -18,9 +18,11 @@ from dotenv import load_dotenv
 import hmac
 import hashlib
 import traceback
+from logging import getLogger
+from typing import List
 
 # Set up logging
-logger = logging.getLogger(__name__)
+logger = getLogger(__name__)
 logger.setLevel(logging.INFO)
 handler = logging.StreamHandler()
 handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
@@ -250,6 +252,51 @@ servicenow_api = ServiceNowAPI(
     token=os.getenv('SERVICENOW_TOKEN')
 )
 
+class ChatbotAPI:
+    def __init__(self):
+        self.message_store = {}
+        self.logger = getLogger(__name__)
+
+    def store_messages(self, request_id: str, messages: List[dict]):
+        """Store formatted messages for a request."""
+        # For action messages, we want to accumulate them
+        if len(messages) == 1 and messages[0].get('uiType') == 'ActionMsg':
+            if request_id not in self.message_store:
+                self.message_store[request_id] = []
+            self.message_store[request_id].append(messages[0])
+        else:
+            # For content messages (OutputCard, Picker), replace existing messages
+            self.message_store[request_id] = messages
+        
+        self.logger.info(f"Updated messages for request {request_id}: {json.dumps(self.message_store[request_id], indent=2)}")
+        return self.message_store[request_id]
+
+    def get_messages(self, request_id: str) -> List[dict]:
+        """Get stored messages for a request."""
+        return self.message_store.get(request_id, [])
+
+    def process_servicenow_callback(self, callback_data: dict) -> List[dict]:
+        """Process a callback from ServiceNow and return formatted messages."""
+        request_id = callback_data.get('requestId')
+        messages = []
+
+        for msg in callback_data.get('body', []):
+            self.logger.info(f"Processing message: {json.dumps(msg, indent=2)}")
+            
+            if msg['uiType'] == 'ActionMsg':
+                messages.append(msg)
+            elif msg['uiType'] == 'OutputCard':
+                # Clear previous messages when we get content
+                messages = [msg]
+            elif msg['uiType'] == 'Picker':
+                if not any(m['uiType'] == 'Picker' for m in messages):
+                    messages.append(msg)
+
+        self.logger.info(f"Added {len(messages)} formatted messages")
+        return self.store_messages(request_id, messages)
+
+chatbot_api = ChatbotAPI()
+
 def get_gpt_response(message: str) -> str:
     try:
         response = client.chat.completions.create(
@@ -372,63 +419,17 @@ async def servicenow_callback(
         if callback.body:
             if isinstance(callback.body, list):
                 # Convert messages to the expected format
-                formatted_messages = []
-                for msg in callback.body:
-                    if not isinstance(msg, dict):
-                        logger.warning("Skipping non-dict message: %s", msg)
-                        continue
-
-                    logger.info("Processing message: %s", json.dumps(msg, indent=2))
-
-                    # Handle different message types
-                    if msg.get('uiType') == 'ActionMsg':
-                        # Pass through action messages unchanged
-                        formatted_messages.append(msg)
-                        logger.info("Added action message: %s", msg)
-                    elif msg.get('uiType') == 'OutputCard':
-                        # Pass through output cards unchanged
-                        formatted_messages.append(msg)
-                        logger.info("Added output card: %s", msg)
-                    elif msg.get('uiType') == 'Picker':
-                        # Pass through picker messages unchanged
-                        formatted_messages.append(msg)
-                        logger.info("Added picker: %s", msg)
-                    else:
-                        # Convert unknown message types to OutputCard format
-                        message_text = msg.get('text') or msg.get('message') or str(msg)
-                        formatted_msg = {
-                            "uiType": "OutputCard",
-                            "group": "DefaultOutputCard",
-                            "templateName": "Card",
-                            "data": json.dumps({
-                                "title": "ServiceNow Response",
-                                "fields": [
-                                    {
-                                        "fieldLabel": "Top Result:",
-                                        "fieldValue": message_text
-                                    }
-                                ]
-                            })
-                        }
-                        formatted_messages.append(formatted_msg)
-                        logger.info("Added formatted message: %s", formatted_msg)
-
+                formatted_messages = chatbot_api.process_servicenow_callback(callback)
+                logger.info("Formatted messages: %s", json.dumps(formatted_messages, indent=2))
+                
+                # Store the formatted messages
                 if formatted_messages:
                     logger.info("Storing %d formatted messages for request %s", 
                               len(formatted_messages), request_id)
-                    
-                    # Store formatted messages
-                    if request_id in pending_responses:
-                        # Get existing messages
-                        existing_messages = pending_responses[request_id]
-                        logger.info("Found existing messages: %s", json.dumps(existing_messages, indent=2))
-                        # Add new messages
-                        pending_responses[request_id] = existing_messages + formatted_messages
-                    else:
-                        pending_responses[request_id] = formatted_messages
-                        
-                    logger.info("Updated messages for request %s: %s", 
-                              request_id, json.dumps(pending_responses[request_id], indent=2))
+                    pending_responses[request_id] = formatted_messages
+                    logger.info("Stored messages: %s",
+                              json.dumps(formatted_messages, indent=2))
+                
             else:
                 # If body is not a list, convert it to an OutputCard
                 logger.warning("Callback body is not a list, converting to OutputCard: %s", callback.body)

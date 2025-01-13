@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ChatHeader from './ChatHeader';
 import ChatMessages from './ChatMessages';
 import ChatInput from './ChatInput';
@@ -53,6 +53,60 @@ const ChatContainer = () => {
     const debugContent = typeof data === 'object' ? JSON.stringify(data, null, 2) : data;
     addMessage(`${label} ${debugContent}`, 'debug-message');
   };
+
+  const processMessages = useCallback((messages) => {
+    let hasContent = false;
+    messages.forEach((msg) => {
+      switch (msg.uiType) {
+        case 'OutputCard':
+          hasContent = true;
+          try {
+            const cardData = JSON.parse(msg.data);
+            addDebugMessage('Parsed card data:', cardData);
+            for (const field of (cardData.fields || [])) {
+              if (field.fieldLabel === 'Top Result:') {
+                addMessage(field.fieldValue, 'bot-message');
+              } else if (field.fieldLabel.includes('KB')) {
+                addMessage(`Learn more: ${field.fieldValue}`, 'bot-message link-message');
+              }
+            }
+          } catch (e) {
+            console.error('Failed to parse card data:', e);
+            addDebugMessage('Error parsing card:', e.message);
+          }
+          break;
+        case 'Picker':
+          hasContent = true;
+          const pickerMessage = `${msg.label}\n${msg.options
+            .map((opt, i) => `${i + 1}. ${opt.label}`)
+            .join('\n')}`;
+          addMessage(pickerMessage, 'bot-message picker-message');
+          break;
+        case 'ActionMsg':
+          // Only show action messages if they have a message property
+          if (msg.message && !msg.message.includes('Please wait')) {
+            hasContent = true;
+            addMessage(msg.message, 'bot-message');
+          }
+          break;
+        default:
+          break;
+      }
+    });
+    return hasContent;
+  }, [addMessage, addDebugMessage]);
+
+  const handlePollResponse = useCallback(async (response) => {
+    if (response.ok) {
+      const data = await response.json();
+      if (data.messages && data.messages.length > 0) {
+        const hasContent = processMessages(data.messages);
+        if (hasContent) {
+          setIsLoading(false);
+        }
+      }
+    }
+  }, [processMessages]);
 
   const handleSendMessage = async (message) => {
     if (!message.trim()) return;
@@ -121,120 +175,7 @@ const ChatContainer = () => {
               credentials: 'include'
             });
 
-            if (!pollResponse.ok) {
-              addDebugMessage('Poll request failed:', pollResponse.status);
-              if (pollResponse.status === 401) {
-                // Handle authentication error
-                addDebugMessage('Authentication failed, redirecting to login');
-                window.location.href = '/login';
-                return;
-              }
-              throw new Error(`Poll failed: ${pollResponse.status}`);
-            }
-
-            const pollText = await pollResponse.text();
-            addDebugMessage('Poll Response Text:', pollText);
-
-            const pollData = JSON.parse(pollText);
-            addDebugMessage('Poll Response Data:', pollData);
-
-            if (pollData.servicenow_response && pollData.servicenow_response.body) {
-              const snMessages = pollData.servicenow_response.body;
-              let hasContent = false;
-              let hasSpinner = false;
-
-              addDebugMessage(`Processing ${snMessages.length} messages`);
-              for (const msg of snMessages) {
-                addDebugMessage('Processing message:', msg);
-                switch (msg.uiType) {
-                  case 'ActionMsg':
-                    switch (msg.actionType) {
-                      case 'StartSpinner':
-                        hasSpinner = true;
-                        setIsLoading(true);
-                        break;
-                      case 'EndSpinner':
-                        hasSpinner = true;
-                        setIsLoading(false);
-                        break;
-                      case 'System':
-                        hasContent = true;
-                        addMessage(msg.message, 'bot-message system-message');
-                        break;
-                      case 'StartConversation':
-                        // Optional: handle as needed
-                        break;
-                      default:
-                        if (msg.message) {
-                          hasContent = true;
-                          addMessage(msg.message, 'bot-message');
-                        }
-                        break;
-                    }
-                    break;
-                  case 'OutputCard':
-                    hasContent = true;
-                    try {
-                      const cardData = JSON.parse(msg.data);
-                      addDebugMessage('Parsed card data:', cardData);
-                      for (const field of (cardData.fields || [])) {
-                        if (field.fieldLabel === 'Top Result:') {
-                          addMessage(field.fieldValue, 'bot-message');
-                        } else if (field.fieldLabel.includes('KB')) {
-                          const linkMessage = `Learn more: ${field.fieldValue}`;
-                          addMessage(linkMessage, 'bot-message link-message');
-                        }
-                      }
-                    } catch (e) {
-                      console.error('Failed to parse card data:', e);
-                      addDebugMessage('Error parsing card:', e.message);
-                      // Still try to display something if parsing fails
-                      addMessage(msg.data, 'bot-message');
-                    }
-                    break;
-                  case 'Picker':
-                    hasContent = true;
-                    const pickerMessage = `${msg.label}\n${msg.options
-                      .map((opt, i) => `${i + 1}. ${opt.label}`)
-                      .join('\n')}`;
-                    addMessage(pickerMessage, 'bot-message picker-message');
-                    break;
-                  default:
-                    if (msg.message) {
-                      hasContent = true;
-                      addMessage(msg.message, 'bot-message');
-                    }
-                    break;
-                }
-              }
-
-              // Acknowledge messages if we got anything
-              if (hasContent || hasSpinner) {
-                try {
-                  addDebugMessage('Acknowledging messages');
-                  const ackResponse = await fetch(`${pollUrl}?acknowledge=true`, {
-                    method: 'GET',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include'
-                  });
-                  if (!ackResponse.ok) {
-                    addDebugMessage('Failed to acknowledge messages:', ackResponse.status);
-                  }
-                } catch (e) {
-                  addDebugMessage('Error acknowledging messages:', e.message);
-                }
-              }
-
-              // Stop polling if real content arrived
-              if (hasContent) {
-                addDebugMessage('Stopping poll: content received');
-                clearInterval(pollInterval);
-                setIsPolling(false);
-                return;
-              }
-            } else {
-              addDebugMessage('No messages in response');
-            }
+            await handlePollResponse(pollResponse);
           } catch (error) {
             console.error('Error during polling:', error);
             addDebugMessage('Polling error:', error.message);

@@ -113,9 +113,14 @@ const ChatContainer = () => {
     if (response.ok) {
       const data = await response.json();
       console.log('Poll response data:', data);
-      if (data.messages && data.messages.length > 0) {
-        console.log('Processing messages from poll:', data.messages);
-        const hasContent = processMessages(data.messages);
+
+      // Extract messages from the servicenow_response
+      const messages = data?.servicenow_response?.body || [];
+      console.log('ServiceNow messages:', messages);
+
+      if (messages.length > 0) {
+        console.log('Processing messages from poll:', messages);
+        const hasContent = processMessages(messages);
         console.log('Poll processing complete. Has content:', hasContent);
         if (hasContent) {
           setIsLoading(false);
@@ -183,9 +188,13 @@ const ChatContainer = () => {
             const pollData = await pollResponse.json();
             console.log('Poll response data:', pollData);
 
-            if (pollData.messages && pollData.messages.length > 0) {
-              console.log('Processing messages from poll:', pollData.messages);
-              const hasContent = processMessages(pollData.messages);
+            // Extract messages from the servicenow_response
+            const messages = pollData?.servicenow_response?.body || [];
+            console.log('ServiceNow messages:', messages);
+
+            if (messages.length > 0) {
+              console.log('Processing messages from poll:', messages);
+              const hasContent = processMessages(messages);
               if (hasContent) {
                 console.log('Content received, stopping polling');
                 clearInterval(pollInterval);

@@ -162,7 +162,8 @@ class ServiceNowAPI:
                 'x-b2b-signature': signature
             }
 
-            logger.info("Sending request to ServiceNow with payload: %s", payload)
+            logger.info("=== Sending Request to ServiceNow ===")
+            logger.info("Payload: %s", payload)
             response = requests.post(
                 f"https://{self.instance_url}/api/sn_va_as_service/bot/integration",
                 headers=headers,
@@ -174,6 +175,52 @@ class ServiceNowAPI:
             logger.info("ServiceNow Raw Response Content: %s", response.text)
 
             response.raise_for_status()
+            
+            # Parse the response
+            try:
+                response_data = response.json()
+                logger.info("ServiceNow Response Data: %s", json.dumps(response_data, indent=2))
+                
+                # Check if we have an immediate response
+                if response_data.get('body'):
+                    # Convert the response to our format
+                    formatted_messages = []
+                    for msg in response_data['body']:
+                        if not isinstance(msg, dict):
+                            continue
+
+                        # Handle different message types
+                        if msg.get('uiType') in ['ActionMsg', 'OutputCard', 'Picker']:
+                            # Pass through known message types unchanged
+                            formatted_messages.append(msg)
+                        else:
+                            # Convert unknown message types to OutputCard format
+                            message_text = msg.get('text') or msg.get('message') or str(msg)
+                            formatted_messages.append({
+                                "uiType": "OutputCard",
+                                "group": "DefaultOutputCard",
+                                "templateName": "Card",
+                                "data": json.dumps({
+                                    "title": "ServiceNow Response",
+                                    "fields": [
+                                        {
+                                            "fieldLabel": "Top Result:",
+                                            "fieldValue": message_text
+                                        }
+                                    ]
+                                })
+                            })
+                    
+                    # Store the formatted messages
+                    if formatted_messages:
+                        logger.info("Storing %d immediate messages for request %s",
+                                  len(formatted_messages), request_id)
+                        pending_responses[request_id] = formatted_messages
+                        logger.info("Stored messages: %s",
+                                  json.dumps(formatted_messages, indent=2))
+                
+            except json.JSONDecodeError:
+                logger.warning("ServiceNow response was not JSON")
             
             # Return the requestId for async processing
             return {
@@ -293,21 +340,25 @@ async def servicenow_callback(
     request: Request,
     credentials: HTTPBasicCredentials = Depends(security)
 ):
+    """Handle callbacks from ServiceNow."""
     verify_callback_credentials(credentials)
     
     # Get raw request body
     raw_body = await request.body()
+    logger.info("=== ServiceNow Callback Received ===")
     logger.info("Raw callback body: %s", raw_body.decode())
     
     # Parse JSON
     try:
         body = json.loads(raw_body)
+        logger.info("Parsed callback body: %s", json.dumps(body, indent=2))
     except json.JSONDecodeError as e:
         logger.error("Failed to parse callback JSON: %s", str(e))
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
     try:
         callback = ServiceNowCallback(**body)
+        logger.info("Callback object: %s", callback)
         
         # Extract request ID from the callback
         request_id = callback.requestId
@@ -324,22 +375,28 @@ async def servicenow_callback(
                 formatted_messages = []
                 for msg in callback.body:
                     if not isinstance(msg, dict):
+                        logger.warning("Skipping non-dict message: %s", msg)
                         continue
+
+                    logger.info("Processing message: %s", json.dumps(msg, indent=2))
 
                     # Handle different message types
                     if msg.get('uiType') == 'ActionMsg':
                         # Pass through action messages unchanged
                         formatted_messages.append(msg)
+                        logger.info("Added action message: %s", msg)
                     elif msg.get('uiType') == 'OutputCard':
                         # Pass through output cards unchanged
                         formatted_messages.append(msg)
+                        logger.info("Added output card: %s", msg)
                     elif msg.get('uiType') == 'Picker':
                         # Pass through picker messages unchanged
                         formatted_messages.append(msg)
+                        logger.info("Added picker: %s", msg)
                     else:
                         # Convert unknown message types to OutputCard format
                         message_text = msg.get('text') or msg.get('message') or str(msg)
-                        formatted_messages.append({
+                        formatted_msg = {
                             "uiType": "OutputCard",
                             "group": "DefaultOutputCard",
                             "templateName": "Card",
@@ -352,7 +409,9 @@ async def servicenow_callback(
                                     }
                                 ]
                             })
-                        })
+                        }
+                        formatted_messages.append(formatted_msg)
+                        logger.info("Added formatted message: %s", formatted_msg)
 
                 if formatted_messages:
                     logger.info("Storing %d formatted messages for request %s", 
@@ -362,6 +421,7 @@ async def servicenow_callback(
                     if request_id in pending_responses:
                         # Get existing messages
                         existing_messages = pending_responses[request_id]
+                        logger.info("Found existing messages: %s", json.dumps(existing_messages, indent=2))
                         # Add new messages
                         pending_responses[request_id] = existing_messages + formatted_messages
                     else:
@@ -373,7 +433,7 @@ async def servicenow_callback(
                 # If body is not a list, convert it to an OutputCard
                 logger.warning("Callback body is not a list, converting to OutputCard: %s", callback.body)
                 message_text = str(callback.body)
-                pending_responses[request_id] = [{
+                formatted_msg = {
                     "uiType": "OutputCard",
                     "group": "DefaultOutputCard",
                     "templateName": "Card",
@@ -386,7 +446,10 @@ async def servicenow_callback(
                             }
                         ]
                     })
-                }]
+                }
+                pending_responses[request_id] = [formatted_msg]
+                logger.info("Stored single message for request %s: %s", 
+                          request_id, json.dumps(formatted_msg, indent=2))
                 
         return {"status": "success"}
     except Exception as e:
@@ -395,45 +458,11 @@ async def servicenow_callback(
 
 @app.get("/servicenow/responses/{request_id}")
 async def get_servicenow_responses(request_id: str, acknowledge: bool = False, user: Optional[User] = Depends(get_current_user)):
-    logger.info(f"=== Get ServiceNow Responses ===")
-    logger.info(f"Request ID: {request_id}")
-    logger.info(f"Acknowledge: {acknowledge}")
-
-    if not user:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    try:
-        if request_id not in pending_responses:
-            logger.info("No responses found for request ID")
-            return {"servicenow_response": {"body": []}}
-
-        response_data = pending_responses[request_id]
-        logger.info(f"Found response data: {response_data}")
-
-        if acknowledge:
-            logger.info("Acknowledging and removing response")
-            pending_responses.pop(request_id)
-            return {"servicenow_response": {"body": []}}
-
-        if not response_data:
-            logger.info("Response data is empty")
-            return {"servicenow_response": {"body": []}}
-
-        logger.info(f"Returning response with {len(response_data)} messages")
-        return {"servicenow_response": {"body": response_data}}
-
-    except Exception as e:
-        logger.error(f"Error getting responses: {str(e)}")
-        logger.error(f"Stack trace: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/poll/{request_id}")
-async def poll_request(request_id: str, acknowledge: bool = False, user: Optional[User] = Depends(get_current_user)):
     """Get responses for a specific request ID."""
-    logger.info(f"=== Poll Request ===")
-    logger.info(f"Request ID: {request_id}")
-    logger.info(f"Acknowledge: {acknowledge}")
-    logger.info(f"User: {user}")
+    logger.info("=== Get ServiceNow Responses ===")
+    logger.info("Request ID: %s", request_id)
+    logger.info("Acknowledge: %s", acknowledge)
+    logger.info("User: %s", user)
 
     if not user:
         logger.error("Authentication failed")
@@ -445,7 +474,7 @@ async def poll_request(request_id: str, acknowledge: bool = False, user: Optiona
             return {"servicenow_response": {"body": []}}
 
         response_data = pending_responses[request_id]
-        logger.info(f"Found response data: {response_data}")
+        logger.info("Found response data: %s", json.dumps(response_data, indent=2))
 
         if acknowledge:
             logger.info("Acknowledging and removing response")
@@ -456,12 +485,51 @@ async def poll_request(request_id: str, acknowledge: bool = False, user: Optiona
             logger.info("Response data is empty")
             return {"servicenow_response": {"body": []}}
 
-        logger.info(f"Returning response with {len(response_data)} messages")
+        logger.info("Returning response with %d messages", len(response_data))
+        logger.info("Response body: %s", json.dumps(response_data, indent=2))
         return {"servicenow_response": {"body": response_data}}
 
     except Exception as e:
-        logger.error(f"Error getting responses: {str(e)}")
-        logger.error(f"Stack trace: {traceback.format_exc()}")
+        logger.error("Error getting responses: %s", str(e))
+        logger.error("Stack trace: %s", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/poll/{request_id}")
+async def poll_request(request_id: str, acknowledge: bool = False, user: Optional[User] = Depends(get_current_user)):
+    """Get responses for a specific request ID."""
+    logger.info("=== Poll Request ===")
+    logger.info("Request ID: %s", request_id)
+    logger.info("Acknowledge: %s", acknowledge)
+    logger.info("User: %s", user)
+
+    if not user:
+        logger.error("Authentication failed")
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    try:
+        if request_id not in pending_responses:
+            logger.info("No responses found for request ID")
+            return {"servicenow_response": {"body": []}}
+
+        response_data = pending_responses[request_id]
+        logger.info("Found response data: %s", json.dumps(response_data, indent=2))
+
+        if acknowledge:
+            logger.info("Acknowledging and removing response")
+            pending_responses.pop(request_id)
+            return {"servicenow_response": {"body": []}}
+
+        if not response_data:
+            logger.info("Response data is empty")
+            return {"servicenow_response": {"body": []}}
+
+        logger.info("Returning response with %d messages", len(response_data))
+        logger.info("Response body: %s", json.dumps(response_data, indent=2))
+        return {"servicenow_response": {"body": response_data}}
+
+    except Exception as e:
+        logger.error("Error getting responses: %s", str(e))
+        logger.error("Stack trace: %s", traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/debug/pending_responses")

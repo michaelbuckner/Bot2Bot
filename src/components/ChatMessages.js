@@ -1,4 +1,6 @@
 import React, { useRef, useEffect } from 'react';
+import openaiIcon from '../static/openai.png';
+import servicenowIcon from '../static/servicenow-icon.png';
 
 const ChatMessages = React.forwardRef(({ messages, isLoading }, ref) => {
   useEffect(() => {
@@ -13,6 +15,13 @@ const ChatMessages = React.forwardRef(({ messages, isLoading }, ref) => {
       const url = message.text.replace('Learn more: ', '');
       return (
         <div key={index} className={`message ${message.type}`}>
+          <div className="message-icon">
+            <img 
+              src={message.source === 'servicenow' ? servicenowIcon : openaiIcon} 
+              alt={message.source === 'servicenow' ? 'ServiceNow' : 'OpenAI'} 
+              className="source-icon"
+            />
+          </div>
           <a href={url} target="_blank" rel="noopener noreferrer">
             {message.text}
           </a>
@@ -24,12 +33,34 @@ const ChatMessages = React.forwardRef(({ messages, isLoading }, ref) => {
     if (message.type === 'bot-message picker-message') {
       return (
         <div key={index} className={`message ${message.type}`}>
+          <div className="message-icon">
+            <img 
+              src={message.source === 'servicenow' ? servicenowIcon : openaiIcon} 
+              alt={message.source === 'servicenow' ? 'ServiceNow' : 'OpenAI'} 
+              className="source-icon"
+            />
+          </div>
           <pre className="picker-options">{message.text}</pre>
         </div>
       );
     }
 
     // Regular messages
+    if (message.type === 'bot-message') {
+      return (
+        <div key={index} className={`message ${message.type}`}>
+          <div className="message-icon">
+            <img 
+              src={message.source === 'servicenow' ? servicenowIcon : openaiIcon} 
+              alt={message.source === 'servicenow' ? 'ServiceNow' : 'OpenAI'} 
+              className="source-icon"
+            />
+          </div>
+          <div className="message-content">{message.text}</div>
+        </div>
+      );
+    }
+
     return (
       <div key={index} className={`message ${message.type}`}>
         <div className="message-content">{message.text}</div>

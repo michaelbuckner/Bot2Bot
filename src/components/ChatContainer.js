@@ -40,13 +40,13 @@ const ChatContainer = () => {
     }
   }, [messages]);
 
-  const addMessage = (content, className = 'bot-message') => {
-    if (!content) {
+  const addMessage = useCallback((text, type, source = 'openai') => {
+    if (!text) {
       console.error('Empty message content');
       return;
     }
-    setMessages(prev => [...prev, { text: content, type: className, isServiceNow }]);
-  };
+    setMessages(prev => [...prev, { text, type, source }]);
+  }, []);
 
   const addDebugMessage = (label, data = '') => {
     if (!isDebug) return;
@@ -70,10 +70,10 @@ const ChatContainer = () => {
               console.log('Processing field:', field);
               if (field.fieldLabel === 'Top Result:') {
                 console.log('Adding top result message:', field.fieldValue);
-                addMessage(field.fieldValue, 'bot-message');
+                addMessage(field.fieldValue, 'bot-message', 'servicenow');
               } else if (field.fieldLabel.includes('KB')) {
                 console.log('Adding KB link message:', field.fieldValue);
-                addMessage(`Learn more: ${field.fieldValue}`, 'bot-message link-message');
+                addMessage(`Learn more: ${field.fieldValue}`, 'bot-message link-message', 'servicenow');
               }
             }
           } catch (e) {
@@ -88,15 +88,14 @@ const ChatContainer = () => {
             .map((opt, i) => `${i + 1}. ${opt.label}`)
             .join('\n')}`;
           console.log('Adding picker message:', pickerMessage);
-          addMessage(pickerMessage, 'bot-message picker-message');
+          addMessage(pickerMessage, 'bot-message picker-message', 'servicenow');
           break;
         case 'ActionMsg':
           console.log('Processing ActionMsg:', msg);
-          // Only show action messages if they have a message property
           if (msg.message && !msg.message.includes('Please wait')) {
             console.log('Adding action message:', msg.message);
             hasContent = true;
-            addMessage(msg.message, 'bot-message');
+            addMessage(msg.message, 'bot-message', 'servicenow');
           }
           break;
         default:

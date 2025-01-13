@@ -159,13 +159,29 @@ input:checked + .slider:before {
   margin-bottom: 10px;
 }
 
-.user-message, .bot-message, .debug-message, .error-message {
-  max-width: 80%;
-  padding: 10px 15px;
+.message {
+  display: flex;
+  align-items: flex-start;
+  margin: 10px;
+  padding: 10px;
   border-radius: 10px;
-  margin: 5px 0;
-  word-wrap: break-word;
-  white-space: pre-wrap;
+  max-width: 80%;
+}
+
+.message-icon {
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+.source-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+}
+
+.message-content {
+  flex-grow: 1;
+  word-break: break-word;
 }
 
 .user-message {
@@ -314,10 +330,6 @@ input:checked + .slider:before {
   background: none;
   border: none;
   padding: 0;
-}
-
-.message-content {
-  word-break: break-word;
 }
 
 .bot-message.link-message a {

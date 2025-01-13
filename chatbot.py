@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Request, Response, Depends, Cookie, 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field
 import time
@@ -37,7 +37,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-client = OpenAI()
+client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 # Mount static files and templates
 static_files = StaticFiles(directory="static")
@@ -66,7 +66,7 @@ def get_current_user(request: Request) -> Optional[User]:
 async def read_root(request: Request, user: Optional[User] = Depends(get_current_user)):
     if not user:
         return RedirectResponse(url="/login")
-    return templates.TemplateResponse("index.html", {"request": request})
+    return FileResponse("static/index.html")
 
 # Add login page route
 @app.get("/login", response_class=HTMLResponse)
@@ -221,12 +221,14 @@ async def chat(
     user: Optional[User] = Depends(get_current_user)
 ):
     """Handle chat messages from the frontend."""
+    logger.info(f"Received chat request: {request}")
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     try:
         if request.use_servicenow:
             # Send to ServiceNow
+            logger.info("Using ServiceNow API")
             response = servicenow_api.send_message_to_va(request.message, request.session_id)
             logger.info("ServiceNow API Response: %s", response)
             
@@ -245,11 +247,13 @@ async def chat(
                 )
         else:
             # Use GPT
+            logger.info("Using GPT API")
             response = get_gpt_response(request.message)
+            logger.info("GPT Response: %s", response)
             return {"response": response}
             
     except Exception as e:
-        logger.error("Error in chat endpoint: %s", str(e))
+        logger.error("Error in chat endpoint: %s", str(e), exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 class ServiceNowCallback(BaseModel):

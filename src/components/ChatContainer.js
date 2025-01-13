@@ -131,8 +131,25 @@ const ChatContainer = () => {
               
               if (pollData.messages && pollData.messages.length > 0) {
                 pollData.messages.forEach(msg => {
-                  if (msg.uiType === 'OutputCard' || msg.uiType === 'OutputText') {
-                    addMessage(msg.value || msg.text || JSON.stringify(msg), 'bot-message');
+                  if (msg.uiType === 'OutputCard') {
+                    try {
+                      const cardData = JSON.parse(msg.data);
+                      // Extract and display the main content from the card
+                      const content = cardData.fields?.find(f => f.fieldLabel === 'Top Result:')?.fieldValue || 
+                                    JSON.stringify(cardData);
+                      addMessage(content, 'bot-message');
+                    } catch (e) {
+                      console.error('Error parsing card data:', e);
+                      addMessage(JSON.stringify(msg), 'bot-message');
+                    }
+                  } else if (msg.uiType === 'OutputText') {
+                    addMessage(msg.value || msg.text, 'bot-message');
+                  } else if (msg.uiType === 'Picker') {
+                    // Add picker options as a system message
+                    addMessage(msg.label, 'bot-message system-message');
+                    msg.options.forEach(option => {
+                      addMessage(`- ${option.label}`, 'bot-message system-message');
+                    });
                   }
                 });
               }

@@ -330,7 +330,7 @@ input:checked + .slider:before {
 }
 
 .chat-input {
-  flex-grow: 1;
+  flex: 1;
   padding: 6px 12px;
   border: 1px solid var(--border-color);
   border-radius: 16px;
@@ -341,10 +341,11 @@ input:checked + .slider:before {
   outline: none;
   min-height: 32px;
   resize: none;
+  width: 100%;
 }
 
 .send-button {
-  flex-shrink: 0;
+  flex: 0 0 auto;
   padding: 6px 12px;
   background-color: #4a90e2;
   color: white;

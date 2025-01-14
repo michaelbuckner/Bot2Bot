@@ -57,12 +57,25 @@ const ChatContainer = () => {
   const processMessages = useCallback((messages) => {
     console.log('Processing messages:', messages);
     let hasContent = false;
+    let disclaimerAdded = false;
+
+    // First pass: Check for and process disclaimer
+    messages.forEach((msg) => {
+      if (msg.uiType === 'ActionMsg' && msg.message && !msg.message.includes('Please wait')) {
+        if (!disclaimerAdded) {
+          addMessage(msg.message, 'bot-message disclaimer', 'servicenow');
+          disclaimerAdded = true;
+          hasContent = true;
+        }
+      }
+    });
+
+    // Second pass: Process actual content
     messages.forEach((msg) => {
       console.log('Processing message:', msg);
       switch (msg.uiType) {
         case 'OutputCard':
           console.log('Processing OutputCard:', msg);
-          hasContent = true;
           try {
             const cardData = JSON.parse(msg.data);
             console.log('Parsed card data:', cardData);
@@ -71,6 +84,7 @@ const ChatContainer = () => {
               if (field.fieldLabel === 'Top Result:') {
                 console.log('Adding top result message:', field.fieldValue);
                 addMessage(field.fieldValue, 'bot-message', 'servicenow');
+                hasContent = true;
               } else if (field.fieldLabel.includes('KB')) {
                 console.log('Adding KB link message:', field.fieldValue);
                 addMessage(`Learn more: ${field.fieldValue}`, 'bot-message link-message', 'servicenow');
@@ -83,12 +97,12 @@ const ChatContainer = () => {
           break;
         case 'Picker':
           console.log('Processing Picker:', msg);
-          hasContent = true;
           const pickerMessage = `${msg.label}\n${msg.options
             .map((opt, i) => `${i + 1}. ${opt.label}`)
             .join('\n')}`;
           console.log('Adding picker message:', pickerMessage);
           addMessage(pickerMessage, 'bot-message picker-message', 'servicenow');
+          hasContent = true;
           break;
         case 'ActionMsg':
           console.log('Processing ActionMsg:', msg);

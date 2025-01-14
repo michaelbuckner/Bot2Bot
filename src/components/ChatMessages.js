@@ -1,4 +1,6 @@
 import React, { useRef, useEffect } from 'react';
+import servicenowIcon from '../assets/servicenow-icon.png';
+import openaiIcon from '../assets/openai.png';
 
 const ChatMessages = React.forwardRef(({ messages, isLoading }, ref) => {
   useEffect(() => {
@@ -8,6 +10,9 @@ const ChatMessages = React.forwardRef(({ messages, isLoading }, ref) => {
   }, [messages, ref]);
 
   const renderMessage = (message, index) => {
+    const iconSrc = message.source === 'servicenow' ? servicenowIcon : openaiIcon;
+    const iconAlt = message.source === 'servicenow' ? 'ServiceNow' : 'OpenAI';
+
     // Handle link messages
     if (message.type === 'bot-message link-message') {
       const url = message.text.replace('Learn more: ', '');
@@ -15,8 +20,8 @@ const ChatMessages = React.forwardRef(({ messages, isLoading }, ref) => {
         <div key={index} className={`message ${message.type}`}>
           <div className="message-icon">
             <img 
-              src={message.source === 'servicenow' ? '/images/servicenow-icon.png' : '/images/openai.png'} 
-              alt={message.source === 'servicenow' ? 'ServiceNow' : 'OpenAI'} 
+              src={iconSrc}
+              alt={iconAlt}
               className="source-icon"
             />
           </div>
@@ -33,8 +38,8 @@ const ChatMessages = React.forwardRef(({ messages, isLoading }, ref) => {
         <div key={index} className={`message ${message.type}`}>
           <div className="message-icon">
             <img 
-              src={message.source === 'servicenow' ? '/images/servicenow-icon.png' : '/images/openai.png'} 
-              alt={message.source === 'servicenow' ? 'ServiceNow' : 'OpenAI'} 
+              src={iconSrc}
+              alt={iconAlt}
               className="source-icon"
             />
           </div>
@@ -49,8 +54,8 @@ const ChatMessages = React.forwardRef(({ messages, isLoading }, ref) => {
         <div key={index} className={`message ${message.type}`}>
           <div className="message-icon">
             <img 
-              src={message.source === 'servicenow' ? '/images/servicenow-icon.png' : '/images/openai.png'} 
-              alt={message.source === 'servicenow' ? 'ServiceNow' : 'OpenAI'} 
+              src={iconSrc}
+              alt={iconAlt}
               className="source-icon"
             />
           </div>

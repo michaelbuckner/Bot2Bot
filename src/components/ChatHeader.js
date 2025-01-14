@@ -22,10 +22,16 @@ const ChatHeader = ({
             />
             <span className="slider round"></span>
           </label>
-          <span className="toggle-label">ServiceNow</span>
+          <img 
+            src="/images/servicenow-icon.png" 
+            alt="ServiceNow" 
+            className="toggle-label"
+            style={{ width: '24px', height: '24px' }}
+          />
         </div>
         
         <div className="toggle-container">
+          <span className="toggle-label">Light</span>
           <label className="switch">
             <input 
               type="checkbox" 
@@ -34,10 +40,11 @@ const ChatHeader = ({
             />
             <span className="slider round"></span>
           </label>
-          <span className="toggle-label">Dark Mode</span>
+          <span className="toggle-label">Dark</span>
         </div>
-        
+
         <div className="toggle-container">
+          <span className="toggle-label">Debug</span>
           <label className="switch">
             <input 
               type="checkbox" 
@@ -46,24 +53,23 @@ const ChatHeader = ({
             />
             <span className="slider round"></span>
           </label>
-          <span className="toggle-label">Debug</span>
         </div>
-        
-        <button 
-          onClick={onLogout}
-          style={{
-            marginLeft: '20px',
-            padding: '5px 10px',
-            borderRadius: '4px',
-            backgroundColor: '#dc3545',
-            color: 'white',
-            border: 'none',
-            cursor: 'pointer'
-          }}
-        >
-          Logout
-        </button>
       </div>
+
+      <button 
+        onClick={onLogout}
+        className="logout-button"
+        style={{
+          padding: '8px 16px',
+          backgroundColor: '#dc3545',
+          color: 'white',
+          border: 'none',
+          borderRadius: '4px',
+          cursor: 'pointer'
+        }}
+      >
+        Logout
+      </button>
     </div>
   );
 };

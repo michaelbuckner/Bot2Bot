@@ -78,6 +78,24 @@ docker build -t bot2bot .
 docker run -p 8000:8000 -p 3000:3000 bot2bot
 ```
 
+## ServiceNow Configuration
+
+To integrate with ServiceNow, configure your ServiceNow instance to use the following callback URL:
+
+```
+http://your-bot2bot-domain/servicenow/callback
+```
+
+If running locally, this would be:
+```
+http://localhost:8000/servicenow/callback
+```
+
+Make sure to:
+1. Configure this URL in your ServiceNow instance settings
+2. Use the credentials specified in your `.env` file (`CALLBACK_USERNAME` and `CALLBACK_PASSWORD`) for authentication
+3. Ensure your ServiceNow instance has the necessary permissions to make outbound REST calls
+
 ## Project Structure
 
 - `/src` - React frontend source code

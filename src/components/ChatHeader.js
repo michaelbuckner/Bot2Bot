@@ -1,6 +1,4 @@
 import React from 'react';
-import servicenowIcon from '/images/servicenow-icon.png';
-import openaiIcon from '/images/openai.png';
 
 const ChatHeader = ({ 
   isServiceNow, 
@@ -16,7 +14,7 @@ const ChatHeader = ({
       <div className="mode-toggles">
         <div className="toggle-container">
           <img 
-            src={openaiIcon}
+            src={process.env.PUBLIC_URL + '/images/openai.png'}
             alt="GPT" 
             className="toggle-label"
             style={{ width: '24px', height: '24px' }}
@@ -30,7 +28,7 @@ const ChatHeader = ({
             <span className="slider round"></span>
           </label>
           <img 
-            src={servicenowIcon}
+            src={process.env.PUBLIC_URL + '/images/servicenow-icon.png'}
             alt="ServiceNow" 
             className="toggle-label"
             style={{ width: '24px', height: '24px' }}

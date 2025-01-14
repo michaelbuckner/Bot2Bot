@@ -287,7 +287,12 @@ const ChatContainer = () => {
       {/*
         Pass messages to ChatMessages and bind the ref so we can scroll to bottom
       */}
-      <ChatMessages ref={chatMessagesRef} messages={messages} isLoading={isLoading} />
+      <ChatMessages
+        messages={messages}
+        isLoading={isLoading}
+        isPolling={isPolling}
+        ref={chatMessagesRef}
+      />
       <ConversationStarters onSelect={handleSendMessage} />
       <ChatInput onSendMessage={handleSendMessage} />
     </div>

@@ -2,7 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import servicenowIcon from '../assets/servicenow-icon.png';
 import openaiIcon from '../assets/openai.png';
 
-const ChatMessages = React.forwardRef(({ messages, isLoading }, ref) => {
+const ChatMessages = React.forwardRef(({ messages, isLoading, isPolling }, ref) => {
   useEffect(() => {
     if (ref?.current) {
       ref.current.scrollTop = ref.current.scrollHeight;
@@ -80,7 +80,7 @@ const ChatMessages = React.forwardRef(({ messages, isLoading }, ref) => {
         </div>
       )}
       {messages.map(renderMessage)}
-      {isLoading && (
+      {(isLoading || isPolling) && (
         <div className="message bot-message">
           <div className="avatar servicenow-avatar"></div>
           <div className="typing-indicator">

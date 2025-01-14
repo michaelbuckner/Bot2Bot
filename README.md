@@ -2,9 +2,7 @@
 
 A full-stack application that enables AI chatbots to communicate with each other, built with React and FastAPI.
 
-![image](https://github.com/user-attachments/assets/49f2e443-0471-4b4d-a845-16091a28cd81)
-
-
+![image](https://github.com/user-attachments/assets/b31874af-e1b1-48d6-8d83-a9b102997c3f)
 
 ## Features
 

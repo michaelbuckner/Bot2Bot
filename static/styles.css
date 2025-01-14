@@ -123,11 +123,13 @@ body {
 .chat-input-wrapper {
     display: flex;
     flex-direction: column;
-    height: 100%; /* or a specific height */
+    height: 100%;
+    width: 100%;
   }
 
 .chat-input {
     flex: 1;
+    width: 100%;
 }
 
 .send-button {

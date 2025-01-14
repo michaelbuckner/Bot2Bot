@@ -329,12 +329,11 @@ input:checked + .slider:before {
   align-items: center;
   width: 100%;
   box-sizing: border-box;
-  height: 67.5px;
 }
 
 .chat-input {
   flex: 1 1 auto;
-  padding: 8px 12px;
+  padding: 6px 12px;
   border: 1px solid var(--border-color);
   border-radius: 16px;
   background-color: var(--input-background);
@@ -342,17 +341,15 @@ input:checked + .slider:before {
   font-size: 13px;
   transition: all 0.2s ease;
   outline: none;
-  height: calc(100% - 24px); /* Account for container padding */
+  min-height: 32px;
   resize: none;
-  width: calc(100% - 24px); /* Account for padding */
+  width: 100%;
   box-sizing: border-box;
-  display: flex;
-  align-items: center;
 }
 
 .send-button {
   flex: 0 0 auto;
-  padding: 8px 12px;
+  padding: 6px 12px;
   background-color: #4a90e2;
   color: white;
   border: none;
@@ -364,8 +361,17 @@ input:checked + .slider:before {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: calc(100% - 24px); /* Match input height */
+  height: 32px;
   min-width: 60px;
+}
+
+.send-button:hover {
+  background-color: #357abd;
+  transform: translateY(-1px);
+}
+
+.send-button:active {
+  transform: translateY(0);
 }
 
 .loading-dots {

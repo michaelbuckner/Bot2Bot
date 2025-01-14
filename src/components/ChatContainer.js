@@ -135,12 +135,7 @@ const ChatContainer = () => {
         console.log('Processing messages from poll:', messages);
         const hasContent = processMessages(messages);
         console.log('Poll processing complete. Has content:', hasContent);
-        // Only stop loading if we have actual content (not just spinners/wait messages)
-        if (hasContent && !messages.some(msg => 
-          msg.uiType === 'ActionMsg' && 
-          msg.actionType === 'StartSpinner'
-        )) {
-          console.log('Content received, stopping loading');
+        if (hasContent) {
           setIsLoading(false);
         }
       } else {
@@ -180,15 +175,6 @@ const ChatContainer = () => {
       const data = await response.json();
       console.log('Chat response data:', data);
 
-      if (!isServiceNow) {
-        // For non-ServiceNow responses, add message and stop loading
-        if (data.message) {
-          addMessage(data.message, 'bot-message');
-        }
-        setIsLoading(false);
-        return;
-      }
-
       // Check for request_id in the correct location
       const requestId = data?.servicenow_response?.requestId;
       console.log('ServiceNow request ID:', requestId);
@@ -199,13 +185,6 @@ const ChatContainer = () => {
         const maxPolls = 30; // Maximum number of polling attempts
         
         const pollInterval = setInterval(async () => {
-          if (pollCount >= maxPolls) {
-            console.log('Max polls reached, stopping');
-            clearInterval(pollInterval);
-            setIsLoading(false);
-            return;
-          }
-
           try {
             console.log(`Polling attempt ${pollCount + 1} for request ${requestId}`);
             const pollResponse = await fetch(`/servicenow/responses/${requestId}`, {
@@ -229,10 +208,7 @@ const ChatContainer = () => {
             if (messages.length > 0) {
               console.log('Processing messages from poll:', messages);
               const hasContent = processMessages(messages);
-              if (hasContent && !messages.some(msg => 
-                msg.uiType === 'ActionMsg' && 
-                msg.actionType === 'StartSpinner'
-              )) {
+              if (hasContent) {
                 console.log('Content received, stopping polling');
                 clearInterval(pollInterval);
                 setIsLoading(false);
@@ -240,21 +216,31 @@ const ChatContainer = () => {
             }
 
             pollCount++;
+            if (pollCount >= maxPolls) {
+              console.log(`Reached maximum poll attempts (${maxPolls})`);
+              clearInterval(pollInterval);
+              setIsLoading(false);
+              addMessage("I'm sorry, but I didn't receive a response in time. Please try again.", 'bot-message system-message');
+            }
           } catch (error) {
-            console.error('Polling error:', error);
+            console.error('Error during polling:', error);
             clearInterval(pollInterval);
             setIsLoading(false);
+            addMessage('An error occurred while getting the response. Please try again.', 'bot-message system-message');
           }
         }, 1000);
       } else {
         console.log('No ServiceNow request ID found in response');
-        if (data.message) {
-          addMessage(data.message, 'bot-message');
+        if (data.response) {
+          console.log('Adding direct response:', data.response);
+          addMessage(data.response, 'bot-message');
         }
         setIsLoading(false);
       }
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('Error:', error);
+      addDebugMessage('Error:', error);
+    } finally {
       setIsLoading(false);
     }
   };

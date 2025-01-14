@@ -61,6 +61,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
 }
 
 .chat-header {
@@ -274,21 +275,27 @@ input:checked + .slider:before {
   background-color: var(--bot-message-background);
 }
 
-.prompt-templates {
-  position: fixed;
-  bottom: 76px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 100%;
-  max-width: 750px;
-  display: flex;
-  gap: 8px;
-  padding: 8px 16px;
+.prompt-container {
+  position: absolute;
+  bottom: 60px;
+  left: 0;
+  right: 0;
   background-color: var(--chat-background);
   border-top: 1px solid var(--border-color);
+  padding: 8px 16px;
+}
+
+.prompt-templates {
+  display: flex;
+  gap: 8px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  z-index: 10;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.prompt-templates::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
 }
 
 .prompt-template {
@@ -310,19 +317,16 @@ input:checked + .slider:before {
 }
 
 .chat-input-container {
-  position: fixed;
+  position: absolute;
   bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 100%;
-  max-width: 750px;
+  left: 0;
+  right: 0;
   padding: 12px 16px;
   background-color: var(--message-background);
   border-top: 1px solid var(--border-color);
   display: flex;
   gap: 8px;
   align-items: center;
-  z-index: 10;
 }
 
 .chat-input {

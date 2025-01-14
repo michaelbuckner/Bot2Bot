@@ -11,6 +11,8 @@ import os
 import requests
 import logging
 from openai import OpenAI
+from langsmith.wrappers import wrap_openai
+from langsmith import traceable
 import uuid
 from typing import Optional
 import random
@@ -40,7 +42,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+# Initialize OpenAI client with LangSmith wrapper
+client = wrap_openai(OpenAI(api_key=os.getenv('OPENAI_API_KEY')))
 
 # Mount static files and templates
 static_files = StaticFiles(directory="static")
@@ -334,6 +337,7 @@ async def servicenow_callback(callback: ServiceNowCallback):
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=400, detail=str(e))
 
+@traceable
 def get_gpt_response(message: str) -> str:
     try:
         response = client.chat.completions.create(

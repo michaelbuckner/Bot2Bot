@@ -122,19 +122,12 @@ body {
 
 .chat-input-wrapper {
     display: flex;
-    gap: 0.5rem;
-}
+    flex-direction: column;
+    height: 100%; /* or a specific height */
+  }
 
 .chat-input {
     flex: 1;
-    padding: 0.75rem;
-    border: 1px solid var(--border-color);
-    border-radius: 0.5rem;
-    background-color: var(--input-background);
-    color: var(--text-color);
-    resize: none;
-    min-height: 40px;
-    max-height: 200px;
 }
 
 .send-button {

@@ -57,28 +57,12 @@ LANGSMITH_PROJECT=
 
 ## Running the Application
 
-### Development Mode
-
-1. Start the Python backend:
-```bash
-uvicorn chatbot:app --reload
-```
-
-2. In a separate terminal, start the React frontend:
-```bash
-npm start
-```
-
-The application will be available at:
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000
-
 ### Using Docker
 
 Build and run the application using Docker:
 ```bash
 docker build -t bot2bot .
-docker run -p 8000:8000 -p 3000:3000 bot2bot
+docker run -p 8000:8000 bot2bot
 ```
 
 ## ServiceNow Configuration

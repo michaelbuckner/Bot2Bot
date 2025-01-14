@@ -1,4 +1,6 @@
 import React from 'react';
+import servicenowIcon from '/images/servicenow-icon.png';
+import openaiIcon from '/images/openai.png';
 
 const ChatHeader = ({ 
   isServiceNow, 
@@ -13,7 +15,12 @@ const ChatHeader = ({
     <div className="chat-header">
       <div className="mode-toggles">
         <div className="toggle-container">
-          <span className="toggle-label">GPT</span>
+          <img 
+            src={openaiIcon}
+            alt="GPT" 
+            className="toggle-label"
+            style={{ width: '24px', height: '24px' }}
+          />
           <label className="switch">
             <input 
               type="checkbox" 
@@ -23,7 +30,7 @@ const ChatHeader = ({
             <span className="slider round"></span>
           </label>
           <img 
-            src="/images/servicenow-icon.png" 
+            src={servicenowIcon}
             alt="ServiceNow" 
             className="toggle-label"
             style={{ width: '24px', height: '24px' }}

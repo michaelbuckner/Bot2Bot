@@ -86,6 +86,17 @@ body {
   padding: 4px;
 }
 
+.toggle-container img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  vertical-align: middle;
+}
+
+.toggle-container img.toggle-label {
+  margin: 0 4px;
+}
+
 .toggle-label {
   color: var(--text-color);
   font-weight: 500;

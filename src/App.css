@@ -331,20 +331,26 @@ input:checked + .slider:before {
   box-sizing: border-box;
 }
 
+.chat-input-wrapper {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+  gap: 8px;
+}
+
 .chat-input {
   flex: 1 1 auto;
+  width: 100%;
   padding: 6px 12px;
   border: 1px solid var(--border-color);
   border-radius: 16px;
   background-color: var(--input-background);
   color: var(--text-color);
   font-size: 13px;
-  transition: all 0.2s ease;
-  outline: none;
-  min-height: 32px;
   resize: none;
-  width: 100%;
-  box-sizing: border-box;
+  min-height: 40px;
+  max-height: 200px;
 }
 
 .send-button {

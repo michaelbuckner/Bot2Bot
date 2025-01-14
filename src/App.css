@@ -53,51 +53,53 @@ body {
 
 .chat-container {
   width: 100%;
-  max-width: 800px;
+  max-width: 900px;
   height: 90vh;
   background-color: var(--chat-background);
-  border-radius: 10px;
-  box-shadow: 0 0 20px var(--shadow-color);
+  border-radius: 16px;
+  box-shadow: 0 2px 12px var(--shadow-color);
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
 .chat-header {
-  padding: 16px 24px;
+  padding: 20px 28px;
   background-color: var(--message-background);
   border-bottom: 1px solid var(--border-color);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .mode-toggles {
   display: flex;
   align-items: center;
-  gap: 32px;
+  gap: 40px;
   flex-grow: 1;
+  margin-left: 24px;
 }
 
 .toggle-container {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   padding: 4px;
 }
 
 .toggle-container img {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   object-fit: contain;
   vertical-align: middle;
 }
 
 .toggle-label {
   color: var(--text-color);
-  font-weight: 500;
-  font-size: 14px;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 0.2px;
 }
 
 .switch {
@@ -163,56 +165,63 @@ input:checked + .slider:before {
 
 .chat-messages {
   flex-grow: 1;
-  padding: 20px;
+  padding: 28px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
+  background-color: var(--chat-background);
 }
 
 .message {
   display: flex;
-  padding: 16px 24px;
-  margin: 8px 0;
-  border-radius: 8px;
+  padding: 18px 24px;
+  margin: 4px 0;
+  border-radius: 12px;
   align-items: flex-start;
-  gap: 12px;
+  gap: 16px;
+  max-width: 85%;
+  box-shadow: 0 1px 2px var(--shadow-color);
 }
 
 .message.bot-message {
   background-color: var(--bot-message-background);
-  margin-right: 48px;
+  margin-right: 64px;
+  border-bottom-left-radius: 4px;
 }
 
 .message.user-message {
   background-color: var(--user-message-background);
   color: var(--user-message-color);
-  margin-left: 48px;
+  margin-left: 64px;
   justify-content: flex-end;
+  border-bottom-right-radius: 4px;
+  align-self: flex-end;
 }
 
 .message-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background-color: var(--message-background);
   padding: 6px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px var(--shadow-color);
 }
 
-.source-icon {
-  width: 20px;
-  height: 20px;
+.message-icon img {
+  width: 24px;
+  height: 24px;
   object-fit: contain;
 }
 
 .message-content {
-  flex: 1;
+  font-size: 15px;
   line-height: 1.5;
-  font-size: 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .welcome-message {
@@ -266,46 +275,53 @@ input:checked + .slider:before {
 }
 
 .chat-input-container {
-  padding: 16px 24px;
+  padding: 24px 28px;
   background-color: var(--message-background);
   border-top: 1px solid var(--border-color);
   display: flex;
   gap: 16px;
+  align-items: center;
 }
 
 .chat-input {
-  flex: 1;
-  padding: 12px 16px;
+  flex-grow: 1;
+  padding: 12px 20px;
   border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border-radius: 24px;
   background-color: var(--input-background);
   color: var(--text-color);
-  font-size: 14px;
-  line-height: 1.5;
-  resize: none;
-  min-height: 44px;
-  transition: border-color 0.2s;
+  font-size: 15px;
+  transition: all 0.2s ease;
+  outline: none;
 }
 
 .chat-input:focus {
-  outline: none;
-  border-color: #2196F3;
+  border-color: #4a90e2;
+  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
 }
 
 .send-button {
-  padding: 8px 24px;
-  background-color: #2196F3;
+  padding: 12px 24px;
+  background-color: #4a90e2;
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: 24px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
-  transition: background-color 0.2s;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .send-button:hover {
-  background-color: #1976D2;
+  background-color: #357abd;
+  transform: translateY(-1px);
+}
+
+.send-button:active {
+  transform: translateY(0);
 }
 
 .loading-dots {

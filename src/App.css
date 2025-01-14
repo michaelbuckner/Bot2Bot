@@ -53,53 +53,51 @@ body {
 
 .chat-container {
   width: 100%;
-  max-width: 800px;
-  height: 85vh;
+  max-width: 750px;
+  height: 80vh;
   background-color: var(--chat-background);
-  border-radius: 12px;
-  box-shadow: 0 2px 12px var(--shadow-color);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px var(--shadow-color);
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
 .chat-header {
-  padding: 12px 20px;
+  padding: 8px 16px;
   background-color: var(--message-background);
   border-bottom: 1px solid var(--border-color);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .mode-toggles {
   display: flex;
   align-items: center;
-  gap: 32px;
+  gap: 24px;
   flex-grow: 1;
-  margin-left: 16px;
+  margin-left: 12px;
 }
 
 .toggle-container {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 4px;
+  gap: 8px;
+  padding: 2px;
 }
 
 .toggle-container img {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   object-fit: contain;
   vertical-align: middle;
 }
 
 .toggle-label {
   color: var(--text-color);
-  font-weight: 600;
-  font-size: 15px;
-  letter-spacing: 0.2px;
+  font-weight: 500;
+  font-size: 13px;
 }
 
 .switch {
@@ -165,21 +163,21 @@ input:checked + .slider:before {
 
 .chat-messages {
   flex-grow: 1;
-  padding: 20px;
+  padding: 16px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   background-color: var(--chat-background);
 }
 
 .message {
   display: flex;
-  padding: 12px 16px;
+  padding: 10px 14px;
   margin: 2px 0;
   border-radius: 8px;
   align-items: flex-start;
-  gap: 12px;
+  gap: 10px;
   max-width: 85%;
   box-shadow: 0 1px 2px var(--shadow-color);
 }
@@ -203,8 +201,8 @@ input:checked + .slider:before {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background-color: var(--message-background);
   padding: 6px;
@@ -219,8 +217,8 @@ input:checked + .slider:before {
 }
 
 .message-content {
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -276,25 +274,30 @@ input:checked + .slider:before {
 }
 
 .prompt-templates {
+  position: absolute;
+  bottom: 76px;
+  left: 16px;
+  right: 16px;
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
-  margin: 8px 0;
+  padding: 8px;
+  background-color: var(--chat-background);
+  border-top: 1px solid var(--border-color);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .prompt-template {
   background-color: var(--message-background);
   border: 1px solid var(--border-color);
-  border-radius: 16px;
-  padding: 6px 12px;
-  font-size: 13px;
+  border-radius: 14px;
+  padding: 4px 10px;
+  font-size: 12px;
   color: var(--text-color);
   cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex-shrink: 0;
 }
 
 .prompt-template:hover {
@@ -303,41 +306,43 @@ input:checked + .slider:before {
 }
 
 .chat-input-container {
-  padding: 16px 20px;
+  position: relative;
+  padding: 12px 16px;
   background-color: var(--message-background);
   border-top: 1px solid var(--border-color);
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
 }
 
 .chat-input {
   flex-grow: 1;
-  padding: 8px 16px;
+  padding: 6px 12px;
   border: 1px solid var(--border-color);
-  border-radius: 20px;
+  border-radius: 16px;
   background-color: var(--input-background);
   color: var(--text-color);
-  font-size: 14px;
+  font-size: 13px;
   transition: all 0.2s ease;
   outline: none;
-  min-height: 36px;
+  min-height: 32px;
 }
 
 .send-button {
-  padding: 8px 16px;
+  padding: 6px 12px;
   background-color: #4a90e2;
   color: white;
   border: none;
-  border-radius: 18px;
+  border-radius: 14px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 36px;
+  gap: 6px;
+  height: 32px;
+  min-width: 60px;
 }
 
 .send-button:hover {

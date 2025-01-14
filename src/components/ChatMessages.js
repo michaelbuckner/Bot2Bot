@@ -82,12 +82,11 @@ const ChatMessages = React.forwardRef(({ messages, isLoading }, ref) => {
       {messages.map(renderMessage)}
       {isLoading && (
         <div className="message bot-message">
-          <div className="loading-spinner">
-            <div className="spinner-dots">
-              <div></div>
-              <div></div>
-              <div></div>
-            </div>
+          <div className="avatar servicenow-avatar"></div>
+          <div className="typing-indicator">
+            <div className="typing-dot"></div>
+            <div className="typing-dot"></div>
+            <div className="typing-dot"></div>
           </div>
         </div>
       )}

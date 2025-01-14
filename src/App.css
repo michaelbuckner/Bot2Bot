@@ -327,10 +327,12 @@ input:checked + .slider:before {
   display: flex;
   gap: 8px;
   align-items: center;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .chat-input {
-  flex: 1;
+  flex: 1 1 auto;
   padding: 6px 12px;
   border: 1px solid var(--border-color);
   border-radius: 16px;
@@ -342,6 +344,7 @@ input:checked + .slider:before {
   min-height: 32px;
   resize: none;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .send-button {
@@ -447,4 +450,51 @@ input:checked + .slider:before {
 .bot-message.spinner-message {
   background-color: transparent;
   box-shadow: none;
+}
+
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 12px;
+  background-color: var(--message-background);
+  border-radius: 16px;
+  margin: 4px 0;
+  width: fit-content;
+}
+
+.typing-dot {
+  width: 6px;
+  height: 6px;
+  background-color: var(--text-color);
+  border-radius: 50%;
+  opacity: 0.6;
+  animation: typingAnimation 1.4s infinite;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typingAnimation {
+  0%, 100% {
+    transform: translateY(0);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translateY(-4px);
+    opacity: 0.9;
+  }
+}
+
+.bot-message.loading {
+  display: none;
+}
+
+.bot-message.loading + .typing-indicator {
+  display: flex;
 }

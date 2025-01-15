@@ -104,9 +104,3 @@ Make sure to:
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgments
-
-- OpenAI for their powerful AI models
-- FastAPI for the efficient Python web framework
-- React for the frontend framework

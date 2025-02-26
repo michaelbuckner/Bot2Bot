@@ -52,7 +52,7 @@ LANGSMITH_TRACING=
 LANGSMITH_ENDPOINT=
 LANGSMITH_API_KEY=
 LANGSMITH_PROJECT=
-# Add other environment variables as needed
+# ^^ LangSmith is optional. If you only provide an OpenAI API key, it will use that
 ```
 
 ## Running the Application

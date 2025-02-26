@@ -11,24 +11,34 @@ import os
 import requests
 import logging
 from openai import OpenAI
-from langsmith.wrappers import wrap_openai
-from langsmith import traceable
-import uuid
-from typing import Optional
-import random
-from dotenv import load_dotenv
-import hmac
-import hashlib
-import traceback
-from logging import getLogger
-from typing import List
 
-# Set up logging
+# Set up logging first
+from logging import getLogger
 logger = getLogger(__name__)
 logger.setLevel(logging.INFO)
 handler = logging.StreamHandler()
 handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
 logger.addHandler(handler)
+
+# Conditionally import LangSmith
+use_langsmith = os.getenv('LANGSMITH_API_KEY') is not None
+if use_langsmith:
+    try:
+        from langsmith.wrappers import wrap_openai
+        from langsmith import traceable
+        logger.info("LangSmith integration enabled")
+    except ImportError:
+        use_langsmith = False
+        logger.warning("LangSmith package not installed, disabling LangSmith integration")
+else:
+    logger.info("LangSmith integration disabled (no API key provided)")
+import uuid
+from typing import Optional, List
+import random
+from dotenv import load_dotenv
+import hmac
+import hashlib
+import traceback
 
 # Load environment variables
 load_dotenv()
@@ -42,8 +52,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize OpenAI client with LangSmith wrapper
-client = wrap_openai(OpenAI(api_key=os.getenv('OPENAI_API_KEY')))
+# Initialize OpenAI client, with optional LangSmith wrapper
+openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+if use_langsmith:
+    client = wrap_openai(openai_client)
+else:
+    client = openai_client
 
 # Mount static files and templates
 static_files = StaticFiles(directory="static")
@@ -337,7 +351,14 @@ async def servicenow_callback(callback: ServiceNowCallback):
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=400, detail=str(e))
 
-@traceable
+# Define a no-op decorator for when LangSmith is not available
+def no_op_traceable(func):
+    return func
+
+# Use the appropriate decorator based on LangSmith availability
+traceable_decorator = traceable if use_langsmith else no_op_traceable
+
+@traceable_decorator
 def get_gpt_response(message: str) -> str:
     try:
         response = client.chat.completions.create(

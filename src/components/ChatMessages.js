@@ -3,90 +3,107 @@ import servicenowIcon from '../assets/servicenow-icon.png';
 import openaiIcon from '../assets/openai.png';
 
 const ChatMessages = React.forwardRef(({ messages, isLoading, isPolling }, ref) => {
+  // Smooth scroll to bottom when messages change
   useEffect(() => {
     if (ref?.current) {
-      ref.current.scrollTop = ref.current.scrollHeight;
+      const scrollOptions = {
+        top: ref.current.scrollHeight,
+        behavior: 'smooth'
+      };
+      ref.current.scrollTo(scrollOptions);
     }
   }, [messages, ref]);
 
-  const renderMessage = (message, index) => {
-    const iconSrc = message.source === 'servicenow' ? servicenowIcon : openaiIcon;
-    const iconAlt = message.source === 'servicenow' ? 'ServiceNow' : 'OpenAI';
+  // Group messages by type (user/bot) to create message groups
+  const groupedMessages = messages.reduce((groups, message, index) => {
+    const isUserMessage = message.type === 'user-message';
+    const lastGroup = groups.length > 0 ? groups[groups.length - 1] : null;
+    
+    // If this is the first message or the message type is different from the last group
+    if (!lastGroup || (isUserMessage && lastGroup.type !== 'user') || (!isUserMessage && lastGroup.type !== 'bot')) {
+      groups.push({
+        type: isUserMessage ? 'user' : 'bot',
+        messages: [{ ...message, index }]
+      });
+    } else {
+      // Add to the last group
+      lastGroup.messages.push({ ...message, index });
+    }
+    
+    return groups;
+  }, []);
 
+  const renderMessageContent = (message) => {
     // Handle link messages
     if (message.type === 'bot-message link-message') {
       const url = message.text.replace('Learn more: ', '');
       return (
-        <div key={index} className={`message ${message.type}`}>
-          <div className="message-icon">
-            <img 
-              src={iconSrc}
-              alt={iconAlt}
-              className="source-icon"
-            />
-          </div>
-          <a href={url} target="_blank" rel="noopener noreferrer">
-            {message.text}
-          </a>
-        </div>
+        <a href={url} target="_blank" rel="noopener noreferrer">
+          {message.text}
+        </a>
       );
     }
     
     // Handle picker messages with line breaks
     if (message.type === 'bot-message picker-message') {
-      return (
-        <div key={index} className={`message ${message.type}`}>
-          <div className="message-icon">
-            <img 
-              src={iconSrc}
-              alt={iconAlt}
-              className="source-icon"
-            />
-          </div>
-          <pre className="picker-options">{message.text}</pre>
-        </div>
-      );
+      return <pre className="picker-options">{message.text}</pre>;
     }
-
+    
     // Regular messages
-    if (message.type === 'bot-message') {
-      return (
-        <div key={index} className={`message ${message.type}`}>
-          <div className="message-icon">
-            <img 
-              src={iconSrc}
-              alt={iconAlt}
-              className="source-icon"
-            />
-          </div>
-          <div className="message-content">{message.text}</div>
-        </div>
-      );
-    }
+    return <div className="message-content">{message.text}</div>;
+  };
 
+  const renderMessageGroup = (group, groupIndex) => {
+    const isUserGroup = group.type === 'user';
+    const iconSrc = isUserGroup ? null : (group.messages[0].source === 'servicenow' ? servicenowIcon : openaiIcon);
+    const iconAlt = isUserGroup ? null : (group.messages[0].source === 'servicenow' ? 'ServiceNow' : 'OpenAI');
+    
     return (
-      <div key={index} className={`message ${message.type}`}>
-        <div className="message-content">{message.text}</div>
+      <div key={groupIndex} className={`message-group ${group.type}`}>
+        <div className="message-container">
+          {group.messages.map((message, i) => (
+            <div 
+              key={`${groupIndex}-${i}`} 
+              className={`message ${message.type}`}
+            >
+              {!isUserGroup && i === 0 && (
+                <div className="message-icon">
+                  <img 
+                    src={iconSrc}
+                    alt={iconAlt}
+                    className="source-icon"
+                  />
+                </div>
+              )}
+              {renderMessageContent(message)}
+            </div>
+          ))}
+        </div>
       </div>
     );
   };
 
   return (
     <div className="chat-messages" ref={ref}>
-      {messages.length === 0 && (
-        <div className="welcome-message">
-          <h2>Welcome to AI Assistant</h2>
-          <p>How can I help you today?</p>
-        </div>
-      )}
-      {messages.map(renderMessage)}
+      {groupedMessages.map(renderMessageGroup)}
+      
       {(isLoading || isPolling) && (
-        <div className="message bot-message">
-          <div className="avatar servicenow-avatar"></div>
-          <div className="typing-indicator">
-            <div className="typing-dot"></div>
-            <div className="typing-dot"></div>
-            <div className="typing-dot"></div>
+        <div className="message-group bot">
+          <div className="message-container">
+            <div className="message bot-message loading">
+              <div className="message-icon">
+                <img 
+                  src={openaiIcon}
+                  alt="AI"
+                  className="source-icon"
+                />
+              </div>
+              <div className="typing-indicator">
+                <div className="typing-dot"></div>
+                <div className="typing-dot"></div>
+                <div className="typing-dot"></div>
+              </div>
+            </div>
           </div>
         </div>
       )}
